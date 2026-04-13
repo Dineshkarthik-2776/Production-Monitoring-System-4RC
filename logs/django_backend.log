@@ -1,0 +1,66 @@
+2026-04-13 22:22:23,281 [INFO] django.utils.autoreload: Watching for file changes with StatReloader
+2026-04-13 22:22:58,482 [INFO] django.utils.autoreload: C:\Users\dines\Desktop\JKTYRESPROJECT\4RC\backend\backend\settings.py changed, reloading.
+2026-04-13 22:22:59,530 [INFO] django.utils.autoreload: Watching for file changes with StatReloader
+2026-04-13 22:23:03,463 [INFO] django.utils.autoreload: C:\Users\dines\Desktop\JKTYRESPROJECT\4RC\backend\backend\settings.py changed, reloading.
+2026-04-13 22:23:04,509 [INFO] django.utils.autoreload: Watching for file changes with StatReloader
+2026-04-13 22:23:19,935 [INFO] django.server: "OPTIONS /api/auth/login/ HTTP/1.1" 200 0
+2026-04-13 22:23:21,154 [INFO] django.server: "POST /api/auth/login/ HTTP/1.1" 200 142
+2026-04-13 22:23:21,159 [INFO] django.server: "OPTIONS /api/recipe-export-master/?format=json HTTP/1.1" 200 0
+2026-04-13 22:23:21,166 [INFO] django.server: "GET /api/recipe-export-master/?format=json HTTP/1.1" 200 1431
+2026-04-13 22:23:21,260 [INFO] django.server: "OPTIONS /api/correction-requests/ HTTP/1.1" 200 0
+2026-04-13 22:23:21,261 [INFO] django.server: "OPTIONS /api/missing-recipes-warning/ HTTP/1.1" 200 0
+2026-04-13 22:23:21,262 [INFO] django.server: "OPTIONS /api/changeover-stats/?from_date=2026-04-13&to_date=2026-04-13 HTTP/1.1" 200 0
+2026-04-13 22:23:21,264 [INFO] django.server: "OPTIONS /api/correction-requests/ HTTP/1.1" 200 0
+2026-04-13 22:23:21,264 [INFO] django.server: "OPTIONS /api/changeover-stats/?from_date=2026-04-13&to_date=2026-04-13 HTTP/1.1" 200 0
+2026-04-13 22:23:21,265 [INFO] django.server: "OPTIONS /api/missing-recipes-warning/ HTTP/1.1" 200 0
+2026-04-13 22:23:21,284 [WARNING] django.request: Forbidden: /api/correction-requests/
+2026-04-13 22:23:21,284 [INFO] django.server: "GET /api/recipe-export-master/?format=json HTTP/1.1" 200 1431
+2026-04-13 22:23:21,291 [WARNING] django.server: "GET /api/correction-requests/ HTTP/1.1" 403 63
+2026-04-13 22:23:21,293 [INFO] django.server: "GET /api/missing-recipes-warning/ HTTP/1.1" 200 95
+2026-04-13 22:23:21,299 [WARNING] django.request: Forbidden: /api/correction-requests/
+2026-04-13 22:23:21,302 [WARNING] django.server: "GET /api/correction-requests/ HTTP/1.1" 403 63
+2026-04-13 22:23:21,307 [INFO] django.server: "GET /api/recipe-export-master/?format=json HTTP/1.1" 200 1431
+2026-04-13 22:23:21,313 [INFO] django.server: "GET /api/missing-recipes-warning/ HTTP/1.1" 200 95
+2026-04-13 22:23:21,314 [INFO] django.server: "GET /api/changeover-stats/?from_date=2026-04-13&to_date=2026-04-13 HTTP/1.1" 200 37
+2026-04-13 22:23:21,331 [INFO] django.server: "GET /api/changeover-stats/?from_date=2026-04-13&to_date=2026-04-13 HTTP/1.1" 200 37
+2026-04-13 22:23:31,006 [INFO] django.server: "OPTIONS /api/changeover-stats/?from_date=2026-04-01&to_date=2026-04-13 HTTP/1.1" 200 0
+2026-04-13 22:23:31,049 [INFO] django.server: "GET /api/changeover-stats/?from_date=2026-04-01&to_date=2026-04-13 HTTP/1.1" 200 2164
+2026-04-13 22:25:14,603 [INFO] django.server: "OPTIONS /api/standard-time/ HTTP/1.1" 200 0
+2026-04-13 22:25:14,611 [INFO] django.server: "GET /api/standard-time/ HTTP/1.1" 200 343
+2026-04-13 22:25:21,228 [WARNING] django.request: Forbidden: /api/correction-requests/
+2026-04-13 22:25:21,229 [WARNING] django.server: "GET /api/correction-requests/ HTTP/1.1" 403 63
+2026-04-13 22:25:21,237 [INFO] django.server: "GET /api/missing-recipes-warning/ HTTP/1.1" 200 95
+2026-04-13 22:27:21,228 [WARNING] django.request: Forbidden: /api/correction-requests/
+2026-04-13 22:27:21,230 [WARNING] django.server: "GET /api/correction-requests/ HTTP/1.1" 403 63
+2026-04-13 22:27:21,239 [INFO] django.server: "GET /api/missing-recipes-warning/ HTTP/1.1" 200 95
+2026-04-13 22:28:31,032 [INFO] django.server: "GET /api/changeover-stats/?from_date=2026-04-01&to_date=2026-04-13 HTTP/1.1" 200 2164
+2026-04-13 22:29:22,177 [WARNING] django.request: Forbidden: /api/correction-requests/
+2026-04-13 22:29:22,179 [WARNING] django.server: "GET /api/correction-requests/ HTTP/1.1" 403 63
+2026-04-13 22:29:22,187 [INFO] django.server: "GET /api/missing-recipes-warning/ HTTP/1.1" 200 95
+2026-04-13 22:31:21,223 [WARNING] django.request: Forbidden: /api/correction-requests/
+2026-04-13 22:31:21,224 [WARNING] django.server: "GET /api/correction-requests/ HTTP/1.1" 403 63
+2026-04-13 22:31:21,231 [INFO] django.server: "GET /api/missing-recipes-warning/ HTTP/1.1" 200 95
+2026-04-13 22:33:21,228 [WARNING] django.request: Forbidden: /api/correction-requests/
+2026-04-13 22:33:21,229 [WARNING] django.server: "GET /api/correction-requests/ HTTP/1.1" 403 63
+2026-04-13 22:33:21,236 [INFO] django.server: "GET /api/missing-recipes-warning/ HTTP/1.1" 200 95
+2026-04-13 22:33:31,047 [INFO] django.server: "GET /api/changeover-stats/?from_date=2026-04-01&to_date=2026-04-13 HTTP/1.1" 200 2164
+2026-04-13 22:35:21,218 [WARNING] django.request: Forbidden: /api/correction-requests/
+2026-04-13 22:35:21,219 [WARNING] django.server: "GET /api/correction-requests/ HTTP/1.1" 403 63
+2026-04-13 22:35:21,224 [INFO] django.server: "GET /api/missing-recipes-warning/ HTTP/1.1" 200 95
+2026-04-13 22:37:21,223 [WARNING] django.request: Forbidden: /api/correction-requests/
+2026-04-13 22:37:21,225 [WARNING] django.server: "GET /api/correction-requests/ HTTP/1.1" 403 63
+2026-04-13 22:37:21,230 [INFO] django.server: "GET /api/missing-recipes-warning/ HTTP/1.1" 200 95
+2026-04-13 22:38:31,186 [INFO] django.server: "GET /api/changeover-stats/?from_date=2026-04-01&to_date=2026-04-13 HTTP/1.1" 200 2164
+2026-04-13 22:39:30,167 [WARNING] django.request: Forbidden: /api/correction-requests/
+2026-04-13 22:39:30,168 [WARNING] django.server: "GET /api/correction-requests/ HTTP/1.1" 403 63
+2026-04-13 22:39:30,174 [INFO] django.server: "GET /api/missing-recipes-warning/ HTTP/1.1" 200 95
+2026-04-13 22:41:22,174 [WARNING] django.request: Forbidden: /api/correction-requests/
+2026-04-13 22:41:22,175 [WARNING] django.server: "GET /api/correction-requests/ HTTP/1.1" 403 63
+2026-04-13 22:41:22,182 [INFO] django.server: "GET /api/missing-recipes-warning/ HTTP/1.1" 200 95
+2026-04-13 22:43:22,174 [WARNING] django.request: Forbidden: /api/correction-requests/
+2026-04-13 22:43:22,178 [WARNING] django.server: "GET /api/correction-requests/ HTTP/1.1" 403 63
+2026-04-13 22:43:22,186 [INFO] django.server: "GET /api/missing-recipes-warning/ HTTP/1.1" 200 95
+2026-04-13 22:43:31,176 [INFO] django.server: "GET /api/changeover-stats/?from_date=2026-04-01&to_date=2026-04-13 HTTP/1.1" 200 2164
+2026-04-13 22:45:22,167 [WARNING] django.request: Forbidden: /api/correction-requests/
+2026-04-13 22:45:22,168 [WARNING] django.server: "GET /api/correction-requests/ HTTP/1.1" 403 63
+2026-04-13 22:45:22,174 [INFO] django.server: "GET /api/missing-recipes-warning/ HTTP/1.1" 200 95

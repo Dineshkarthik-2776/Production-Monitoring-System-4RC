@@ -1,0 +1,189 @@
+import { useState } from "react";
+import { DateRange } from "react-date-range";
+import "react-date-range/dist/styles.css"; 
+import "react-date-range/dist/theme/default.css"; 
+import "../css/DateIP.css";
+import { useApiData } from "../context/ApiContext";
+
+const DateIP = () => {
+  const { 
+    updateDateRange, 
+    dateRange, 
+    loading, 
+    error, 
+    API_BASE_URL,
+    selectedShift,
+    selectedRecipe,
+    recipeNames,
+    updateShiftFilter,
+    updateRecipeFilter
+  } = useApiData();
+  
+  const [range, setRange] = useState([
+    {
+      startDate: new Date(),
+      endDate: new Date(),
+      key: "selection"
+    }
+  ]);
+  
+  const [showCalendar, setShowCalendar] = useState(false);
+
+  const handleSubmit = () => {
+    // Update context with selected dates
+    updateDateRange(range[0].startDate, range[0].endDate);
+    setShowCalendar(false);
+  };
+
+ // ✅ Updated: Generate & Download Report
+const handleGenerateReport = async () => {
+  try {
+    const startDate = dateRange.from_date;
+    const endDate = dateRange.to_date;
+
+    // Log to confirm full API endpoint
+    console.log(
+      "API URL:",
+      `${API_BASE_URL}/api/reports/summary/?start_date=${startDate}&end_date=${endDate}`
+    );
+
+    // Fetch report
+    const response = await fetch(
+      `${API_BASE_URL}/api/reports/summary/?start_date=${startDate}&end_date=${endDate}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Token ${localStorage.getItem("authToken")}`,
+          Accept: "application/pdf", // Request PDF
+        },
+      }
+    );
+
+    // Handle HTTP errors (non-200)
+    if (!response.ok) {
+      throw new Error("Failed to fetch report.");
+    }
+
+    // Check what content type we actually got back
+    const contentType = response.headers.get("Content-Type");
+
+    // 🧩 Case 1: Backend returns JSON with error (e.g. no data found)
+    if (contentType && contentType.includes("application/json")) {
+      const data = await response.json();
+      const errorMessage =
+        data.error || "Unknown error occurred while generating report.";
+      alert(`⚠️ ${errorMessage}`);
+      return; // Stop here (don’t try to download anything)
+    }
+
+    // 🧩 Case 2: Backend returns a valid PDF
+    if (contentType && contentType.includes("application/pdf")) {
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `4RC_Report_${startDate}_to_${endDate}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      alert("✅ Report downloaded successfully!");
+      return;
+    }
+
+    // 🧩 Case 3: Unknown or invalid file type
+    alert("❌ Unexpected response format. Please contact support or check backend.");
+  } catch (error) {
+    console.error("Error downloading report:", error);
+    alert("❌ Failed to download report. Check console for details.");
+  }
+};
+
+  return (
+    <>
+      <div className="dip-header">
+        <h1 className="dip-title">4RC Setup Summary</h1>
+      </div>
+    
+      <div className="dip-container">
+        <div className="dip-left-section">
+          {/* Shift Filter */}
+          <select 
+            className="dip-filter-select" 
+            value={selectedShift}
+            onChange={(e) => updateShiftFilter(e.target.value)}
+          >
+            <option value="">All Shifts</option>
+            <option value="A">Shift A</option>
+            <option value="B">Shift B</option>
+            <option value="C">Shift C</option>
+          </select>
+
+          {/* Recipe Filter */}
+          <select 
+            className="dip-filter-select" 
+            value={selectedRecipe}
+            onChange={(e) => updateRecipeFilter(e.target.value)}
+          >
+            <option value="">All Recipes</option>
+            {recipeNames.map(name => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+
+          {/* Date Range Input */}
+          <input
+            type="text"
+            readOnly
+            value={`${range[0].startDate.toLocaleDateString()} - ${range[0].endDate.toLocaleDateString()}`}
+            onClick={() => setShowCalendar(!showCalendar)}
+            className="dip-date-input"
+            placeholder="Select date range"
+          />
+
+          {/* Calendar Popup */}
+          {showCalendar && (
+            <div className="dip-calendar-popup">
+              <DateRange
+                editableDateInputs={true}
+                onChange={(item) => setRange([item.selection])}
+                moveRangeOnFirstSelection={false}
+                ranges={range}
+                maxDate={new Date()}
+              />
+            </div>
+          )}
+
+          {/* GET Button */}
+          <button 
+            className="dip-submit-btn" 
+            onClick={handleSubmit}
+            disabled={loading}
+          >
+            {loading ? (
+              <span className="dip-btn-loader"></span>
+            ) : (
+              'GET'
+            )}
+          </button>
+
+          {/* Error Display */}
+          {error && (
+            <span className="dip-error-text">{error}</span>
+          )}
+        </div>
+
+        {/* Generate Report Button */}
+        <button 
+          className="dip-report-btn" 
+          onClick={handleGenerateReport}
+        >
+          Generate Report
+        </button>
+      </div>
+    </>
+  );
+};
+
+export default DateIP;
