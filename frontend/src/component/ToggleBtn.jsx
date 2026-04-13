@@ -43,11 +43,11 @@ const ToggleBtn = () => {
 
       {/* Render Components Based on Selection */}
       <div className="tb-content">
-        {selected === "summary" && <Summary />}
+        {selected === "summary" && <Summary viewType="details" />}
         {selected === "charts" && <Charts />}
         {selected === "both" && (
           <>
-            <Summary />
+            <Summary viewType="summary" />
             <Charts />
           </>
         )}

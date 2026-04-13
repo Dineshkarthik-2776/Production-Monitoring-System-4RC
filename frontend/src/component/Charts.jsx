@@ -205,7 +205,14 @@ const Charts = () => {
                 scales: {
                   y: {
                     beginAtZero: false,
-                    ticks: { color: "#060606ff" },
+                    ticks: {
+                      color: "#060606ff",
+                      precision: 0,
+                      stepSize: 1,
+                      callback: function (value) {
+                        return Number.isInteger(value) ? value : "";
+                      },
+                    },
                     grid: { color: "rgba(0, 0, 0, 0.08)" },
                   },
                   x: {
@@ -259,7 +266,14 @@ const Charts = () => {
                 scales: {
                   y: {
                     beginAtZero: true,
-                    ticks: { color: "#060606ff" },
+                    ticks: {
+                      color: "#060606ff",
+                      precision: 0,
+                      stepSize: 1,
+                      callback: function (value) {
+                        return Number.isInteger(value) ? value : "";
+                      },
+                    },
                     grid: { color: "rgba(0, 0, 0, 0.08)" },
                   },
                   x: {

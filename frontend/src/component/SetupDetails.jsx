@@ -3,12 +3,11 @@ import { useApiData } from "../context/ApiContext";
 import axios from "axios";
 import "../css/SetupDetails.css";
 
-const SetupDetails = () => {
+const SetupDetails = ({ viewType = "details" }) => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
   const { changeoverData, loading, error, refreshData, selectedRecipe } = useApiData();
   const [openRow, setOpenRow] = useState(null);
   const [openDetail, setOpenDetail] = useState(null);
-  const [viewMode, setViewMode] = useState("grouped");
   const [reasons, setReasons] = useState({});
   const [categories, setCategories] = useState({});
   const [saving, setSaving] = useState({});
@@ -182,12 +181,18 @@ const SetupDetails = () => {
 
   // Find the currently open row data
   const openRowData = tableData.find(row => row.id === openRow);
-  const flattenedTableData = tableData.flatMap((row) =>
-    (row.details || []).map((detail) => ({
-      ...detail,
-      type: row.type,
-    }))
-  );
+  const flattenedTableData = tableData
+    .flatMap((row) =>
+      (row.details || []).map((detail) => ({
+        ...detail,
+        type: row.type,
+      }))
+    )
+    .sort((a, b) => {
+      const aTime = a.start_time ? new Date(a.start_time).getTime() : 0;
+      const bTime = b.start_time ? new Date(b.start_time).getTime() : 0;
+      return aTime - bTime;
+    });
 
   const formatDateTime = (dateValue) => {
     if (!dateValue) return "N/A";
@@ -202,23 +207,9 @@ const SetupDetails = () => {
   return (
     <>
       <div className="sd-container">
-        <div className="sd-header">
-          <h2 className="sd-title">4RC Setup Summary</h2>
-          <button
-            type="button"
-            className="sd-view-toggle"
-            onClick={() => {
-              setViewMode((prev) => (prev === "grouped" ? "all" : "grouped"));
-              setOpenRow(null);
-              setOpenDetail(null);
-            }}
-          >
-            {viewMode === "grouped" ? "Show All Setups" : "Show Grouped View"}
-          </button>
-        </div>
         
         <div className="sd-table-wrapper">
-          {viewMode === "grouped" ? (
+          {viewType === "summary" ? (
             <table className="sd-table">
               <thead className="sd-thead">
                 <tr>
@@ -289,7 +280,7 @@ const SetupDetails = () => {
                         className="sd-btn-action"
                         onClick={() => setOpenDetail(detail.id)}
                       >
-                        Upload Reason
+                        {detail.overshoot_reason && detail.overshoot_reason.trim() !== "" ? "Update Result" : "Upload Reason"}
                       </button>
                     </td>
                   </tr>
@@ -301,7 +292,7 @@ const SetupDetails = () => {
       </div>
 
       {/* Modal Popup - OUTSIDE the table */}
-      {openRow && openRowData && (
+      {viewType === "summary" && openRow && openRowData && (
         <>
           {/* Background Overlay */}
           <div 
@@ -400,7 +391,7 @@ const SetupDetails = () => {
                             {saving[detail.id] ? (
                               <span className="sd-btn-loader"></span>
                             ) : (
-                              hasReason ? 'Update' : 'Save'
+                              hasReason ? 'Update Result' : 'Save'
                             )}
                           </button>
                         </td>
@@ -423,7 +414,7 @@ const SetupDetails = () => {
         </>
       )}
 
-      {openDetail && selectedDetailData && (
+      {viewType !== "summary" && openDetail && selectedDetailData && (
         <>
           <div
             className="sd-overlay"
@@ -521,7 +512,7 @@ const SetupDetails = () => {
                             {saving[detail.id] ? (
                               <span className="sd-btn-loader"></span>
                             ) : (
-                              hasReason ? "Update" : "Save"
+                              hasReason ? "Update Result" : "Save"
                             )}
                           </button>
                         </td>
