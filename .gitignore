@@ -1,0 +1,79 @@
+# ========================
+# Python
+# ========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# ========================
+# Django
+# ========================
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+staticfiles/
+media/
+
+# ========================
+# Environment / Secrets
+# ========================
+.env
+.env.*
+*.env
+!.env.example
+
+# ========================
+# Migrations
+# ========================
+# Keep migration files but ignore pycache inside migrations
+backend/*/migrations/__pycache__/
+backend/*/migrations/*.pyc
+
+# ========================
+# IDEs
+# ========================
+.idea/
+.vscode/
+*.iml
+*.suo
+*.user
+*.swp
+*.swo
+*~
+
+# ========================
+# OS
+# ========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ========================
+# Logs
+# ========================
+logs/
+*.log
+
+# ========================
+# Virtual Environments
+# ========================
+venv/
+env/
+.venv/
+ENV/
+
+# ========================
+# Test artifacts
+# ========================
+htmlcov/
+.coverage
+.pytest_cache/
+scratch/

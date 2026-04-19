@@ -5,7 +5,7 @@ from celery import shared_task
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
-from .models import RawLineData, ChangeoverSummary, RecipeMaster, StandardTimeMaster
+from .models import RawLineData, ChangeoverSummary, RecipeMaster, StandardTimeMaster, MaterialMaster
 from datetime import timedelta
 from tqdm import tqdm  
 
@@ -220,8 +220,7 @@ def process_changeover_data(dev_mode=False):
     # --- 2. Fetch raw unprocessed data (Strict limit to last 3 days)
     three_days_ago = timezone.now() - timedelta(days=3)
     unprocessed_qs = RawLineData.objects.filter(
-        processed_flag=False, 
-        timestamp__gte=three_days_ago
+        processed_flag=False
     ).order_by('timestamp')
     
     if not unprocessed_qs.exists():
@@ -476,10 +475,56 @@ def process_changeover_data(dev_mode=False):
     standard_time_mapping = {s.changeover_key: s.standard_time for s in std_times}
 
     # Filter complete changeovers
-    batch_first_nonna = batch_first.dropna(subset=['RAMP_DOWN', 'SETUP_START', 'RAMP_UP', 'SETUP_COMPLETE']).copy()
+    # (Removed dropna to keep incomplete changeovers with remarks)
+    batch_first_nonna = batch_first[batch_first['BATCH'] != batch_first['BATCH'].min()].copy()
     if batch_first_nonna.empty:
-        print("No complete changeovers found in this data chunk. Data will be re-analyzed next run.")
-        return "No complete changeovers found to summarize."
+        print("No changeovers found in this data chunk. Data will be re-analyzed next run.")
+        return "No changeovers found to summarize."
+
+    # Generate Remarks for missing points
+    def get_max_speed(b_df):
+        return round(b_df['Line_Speed_Act'].max(), 1) if not b_df.empty and 'Line_Speed_Act' in b_df.columns else 0
+
+    batch_first_nonna['Remarks'] = None
+    all_unique_batches = np.sort(roll2['BATCH'].unique())
+    
+    for bat in tqdm(batch_first_nonna['BATCH'].unique(), desc='Calculating Remarks'):
+        roll_current_batch = roll2[roll2['BATCH'] == bat]
+        
+        bat_index = np.where(all_unique_batches == bat)[0][0]
+        prev_batch = all_unique_batches[bat_index - 1] if bat_index > 0 else None
+        
+        roll_prev_batch = roll2[roll2['BATCH'] == prev_batch] if prev_batch is not None else pd.DataFrame()
+        
+        row = batch_first_nonna[batch_first_nonna['BATCH'] == bat].iloc[0]
+        prev_recipe = row['PREVIOUS_RECIPE'] if pd.notna(row['PREVIOUS_RECIPE']) else "Unknown"
+        curr_recipe = row['CURRENT_RECIPE'] if pd.notna(row['CURRENT_RECIPE']) else "Unknown"
+
+        remarks = []
+        if roll_prev_batch.empty or 'Target Speed' not in roll_prev_batch.columns or roll_prev_batch['Target Speed'].min() == 0 or pd.isna(roll_prev_batch['Target Speed'].min()):
+            remarks.append(f"target speed is missing for the previous recipe '{prev_recipe}'")
+        elif roll_prev_batch['EQUAL SPEEDS'].sum() == 0:
+            target = roll_prev_batch['Target Speed'].min()
+            max_spd = get_max_speed(roll_prev_batch)
+            remarks.append(f"the target speed for the previous recipe '{prev_recipe}' is {target} but the max speed ran was {max_spd}")
+        elif roll_prev_batch['LS DROP'].sum() == 0:
+            remarks.append(f"zero speed was not reached during the setup from '{prev_recipe}'")
+
+        if roll_current_batch.empty or 'Target Speed' not in roll_current_batch.columns or roll_current_batch['Target Speed'].min() == 0 or pd.isna(roll_current_batch['Target Speed'].min()):
+            remarks.append(f"target speed is missing for the current recipe '{curr_recipe}'")
+        elif roll_current_batch['EQUAL SPEEDS'].sum() == 0:
+            target = roll_current_batch['Target Speed'].min()
+            max_spd = get_max_speed(roll_current_batch)
+            remarks.append(f"the target speed for the current recipe '{curr_recipe}' is {target} but the max speed ran was {max_spd}")
+        elif roll_current_batch['LS DROP'].sum() == 0:
+            remarks.append(f"zero speed was not reached during the setup for '{curr_recipe}'")
+
+        if remarks:
+            remark_str = "Changeover statistics cannot be calculated because " + " and ".join(remarks) + "."
+            batch_first_nonna.loc[batch_first_nonna['BATCH'] == bat, 'Remarks'] = remark_str
+        else:
+            if pd.isna(row['RAMP_DOWN']) or pd.isna(row['SETUP_START']) or pd.isna(row['RAMP_UP']) or pd.isna(row['SETUP_COMPLETE']):
+                batch_first_nonna.loc[batch_first_nonna['BATCH'] == bat, 'Remarks'] = "Changeover statistics cannot be calculated because required setup points could not be identified."
 
     # Calculate losses and times
     for bat in tqdm(batch_first_nonna['BATCH'].unique(), desc='Calculating Loss'):
@@ -490,6 +535,10 @@ def process_changeover_data(dev_mode=False):
         batch_first_nonna.loc[batch_first_nonna['BATCH'] == bat, 'Setup Time'] = res[2]
         batch_first_nonna.loc[batch_first_nonna['BATCH'] == bat, 'static_setup_time'] = res[3]
         batch_first_nonna.loc[batch_first_nonna['BATCH'] == bat, 'ramp_up_time'] = res[4]
+
+        # If Setup Time (act) was successfully calculated, the frontend stats are valid, so remove the error remark.
+        if pd.notna(res[2]):
+            batch_first_nonna.loc[batch_first_nonna['BATCH'] == bat, 'Remarks'] = None
 
     # Apply type mapping
     batch_first_nonna['Current Type'] = batch_first_nonna['CURRENT_RECIPE'].map(type_map)
@@ -523,6 +572,41 @@ def process_changeover_data(dev_mode=False):
 
     # Standard time
     batch_first_nonna['Standard Time'] = batch_first_nonna['Changeover'].map(standard_time_mapping)
+
+    # Calculate shift and production date
+    def calculate_shift_and_date(dt):
+        if pd.isna(dt):
+            return None, None
+        
+        if isinstance(dt, pd.Timestamp):
+            dt = dt.to_pydatetime()
+            
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+            
+        local_dt = timezone.localtime(dt)
+        time_hour = local_dt.hour
+        
+        if 7 <= time_hour < 15:
+            shift = 'A'
+            prod_date = local_dt.date()
+        elif 15 <= time_hour < 23:
+            shift = 'B'
+            prod_date = local_dt.date()
+        else:
+            shift = 'C'
+            if 0 <= time_hour < 7:
+                prod_date = (local_dt - datetime.timedelta(days=1)).date()
+            else:
+                prod_date = local_dt.date()
+        return shift, prod_date
+
+    batch_first_nonna['Shift'] = None
+    batch_first_nonna['Production Date'] = None
+    for idx, row in batch_first_nonna.iterrows():
+        shift, prod_date = calculate_shift_and_date(row['RECIPE CHANGE TIME'])
+        batch_first_nonna.loc[idx, 'Shift'] = shift
+        batch_first_nonna.loc[idx, 'Production Date'] = prod_date
 
     # Replace pandas/np nulls with None for DB compatibility
     batch_first_nonna = batch_first_nonna.replace({np.nan: None, pd.NaT: None})
@@ -586,6 +670,9 @@ def process_changeover_data(dev_mode=False):
                 summary.current_type = clean_value(row.get('Current Type'))
                 summary.previous_type = clean_value(row.get('Previous Type'))
                 summary.change_over_type = clean_value(row.get('Changeover'))
+                summary.remarks = clean_value(row.get('Remarks'))
+                summary.shift = clean_value(row.get('Shift'))
+                summary.production_date = clean_value(row.get('Production Date'))
                 summary.save()
                 
                 summary_objects_created += 1
@@ -680,4 +767,70 @@ def process_changeover_data(dev_mode=False):
     except Exception as e:
         print(f"CRITICAL ERROR during database transaction: {e}")
         raise e
+
+
+# ======================================================================
+# == CELERY TASK: sync_recipe_master_from_bom
+# ======================================================================
+
+@shared_task(name="sync_recipe_master_from_bom")
+def sync_recipe_master_from_bom():
+    """
+    Celery task to sync RecipeMaster from MaterialMaster (BOM table).
+    This task fetches all records from the MaterialMaster table and ensures 
+    that they exist in RecipeMaster. It updates sap_code if missing.
+    """
+    print(f"Celery Task: sync_recipe_master_from_bom started at {timezone.now()}...")
+    try:
+        # Fetch all recipes from the external MaterialMaster table
+        bom_recipes = MaterialMaster.objects.all()
+        
+        created_count = 0
+        updated_count = 0
+
+        for bom in bom_recipes:
+            recipe_code = bom.recipe_code
+            sap_code = bom.sap_code
+            
+            if not recipe_code:
+                continue
+                
+            recipe_code = str(recipe_code).strip().upper()
+            sap_code = str(sap_code).strip() if sap_code else None
+
+            # Get or create in RecipeMaster
+            obj, created = RecipeMaster.objects.get_or_create(
+                recipe_code=recipe_code,
+                defaults={
+                    'sap_code': sap_code,
+                    'target_speed': 0.0, # Default, must be updated via API later
+                    'recipe_type': 'unknown' # Default, must be updated via API later
+                }
+            )
+
+            if created:
+                created_count += 1
+            else:
+                # If it already exists, update sap_code if it's different/empty
+                if obj.sap_code != sap_code:
+                    obj.sap_code = sap_code
+                    obj.save(update_fields=['sap_code'])
+                    updated_count += 1
+
+        print(f"Sync complete. Created: {created_count}, Updated sap_code: {updated_count}.")
+        
+        # 🔄 Requeue any skipped data that might match the newly added recipes
+        if created_count > 0:
+            requeued_count = RawLineData.objects.filter(
+                status="SKIPPED_NO_TARGET_SPEED"
+            ).update(processed_flag=False, status="PENDING_RETRY")
+            print(f"Requeued {requeued_count} records for processing due to new recipes.")
+
+        return f"Success: Created {created_count}, Updated {updated_count}"
+
+    except Exception as e:
+        error_msg = f"CRITICAL ERROR syncing from MaterialMaster: {e}"
+        print(error_msg)
+        return error_msg
+
 

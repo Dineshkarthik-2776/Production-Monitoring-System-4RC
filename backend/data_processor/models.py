@@ -21,11 +21,24 @@ class RawLineData(models.Model) :
         ordering = ['timestamp']
 
 
+class MaterialMaster(models.Model):
+    """
+    External BOM table containing recipes and SAP codes
+    """
+    recipe_code = models.CharField(max_length=100, primary_key=True, db_column='recipe_code')
+    sap_code = models.CharField(max_length=100, null=True, blank=True, db_column='sap_code')
+
+    class Meta:
+        managed = False
+        db_table = 'MaterialMaster'
+
+
 class RecipeMaster(models.Model):
     """
        This model stores the target speed and recipe type
     """
     recipe_code = models.CharField(max_length=100, unique=True, primary_key=True)
+    sap_code = models.CharField(max_length=100, null=True, blank=True)
     target_speed = models.FloatField()
     recipe_type = models.CharField(max_length=50, help_text="e.g., 'Steel' or 'Fabric'")
 
@@ -80,6 +93,9 @@ class ChangeoverSummary(models.Model):
         default=OvershootCategory.NONE  # Set a default
     )
     overshoot_reason = models.TextField(null=True, blank=True, default=None)
+    remarks = models.TextField(null=True, blank=True)
+    production_date = models.DateField(null=True, blank=True)
+    shift = models.CharField(max_length=1, null=True, blank=True)
 
     class Meta:
         db_table = 'ChangeoverSummary'

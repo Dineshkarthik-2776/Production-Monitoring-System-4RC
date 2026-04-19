@@ -6,31 +6,14 @@ class StandardTimeSerializer(serializers.ModelSerializer):
     class Meta:
         model = StandardTimeMaster
         fields = '__all__'
+        read_only_fields = ['changeover_key']
 
 
-class RecipeUploadSerializer(serializers.Serializer):
-    """
-    Serializer for validating uploaded recipe files or JSON data.
-    """
-    excel_file = serializers.FileField(required=False)
-    data = serializers.ListField(
-        child=serializers.DictField(),
-        required=False,
-        help_text="Optional JSON data instead of file upload."
-    )
-
-    def validate(self, attrs):
-        if not attrs.get('excel_file') and not attrs.get('data'):
-            raise serializers.ValidationError("Either 'excel_file' or 'data' must be provided.")
-        if attrs.get('excel_file') and attrs.get('data'):
-            raise serializers.ValidationError("Provide only one of 'excel_file' or 'data', not both.")
-        return attrs
-
-    def validate_excel_file(self, value):
-        filename = value.name.lower()
-        if not (filename.endswith('.csv') or filename.endswith('.xls') or filename.endswith('.xlsx')):
-            raise serializers.ValidationError("File must be a .csv or .xlsx format.")
-        return value
+class RecipeMasterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RecipeMaster
+        fields = '__all__'
+        read_only_fields = ['recipe_code', 'sap_code']
 
 
 
@@ -43,6 +26,8 @@ class ChangeoverDetailSerializer(serializers.ModelSerializer):
     # 1. We're RENAMING fields from our database (like 'current_recipe')
     #    to match your frontend's JSON (like 'material').
     material = serializers.CharField(source='current_recipe')
+    from_recipe = serializers.CharField(source='previous_recipe')
+    to_recipe = serializers.CharField(source='current_recipe')
     Std = serializers.FloatField(source='standard_time')
     act = serializers.FloatField(source='setup_time_actual')
     static = serializers.FloatField(source='static_setup_time')
@@ -58,18 +43,21 @@ class ChangeoverDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'material',
+            'from_recipe',
+            'to_recipe',
+            'start_time',
             'Std',
             'act',
             'static',
             'ramp',
             'shoot',
-            'start_time',
             'overshoot_category',
-            'overshoot_reason'
+            'overshoot_reason',
+            'remarks',
+            'production_date',
+            'shift'
         ]
 
-    # 4. This function provides the value for 'shoot'.
-    #    'obj' is the ChangeoverSummary object for the current row.
     def get_shoot(self, obj):
         """
         Calculates Shoot = Actual Time - Standard Time
@@ -77,9 +65,18 @@ class ChangeoverDetailSerializer(serializers.ModelSerializer):
         if obj.setup_time_actual is not None and obj.standard_time is not None:
             shoot_value = obj.setup_time_actual - obj.standard_time
             return round(shoot_value, 2)
-
-        # Return null if we can't calculate it
         return None
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+
+        # Map null stat values to "NA"
+        stats_fields = ['Std', 'act', 'static', 'ramp', 'shoot']
+        for field in stats_fields:
+            if representation.get(field) is None:
+                representation[field] = "NA"
+                
+        return representation
 
 class ChangeoverUpdateSerializer(serializers.ModelSerializer):
     """
