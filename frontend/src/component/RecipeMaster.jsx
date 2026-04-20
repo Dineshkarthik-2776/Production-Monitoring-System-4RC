@@ -1,167 +1,53 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useState } from "react";
 import axios from "axios";
+import { useApiData } from "../context/ApiContext"; // Import your API context
 import "../css/RecipeMaster.css";
 
 const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
+  //const { API_BASE_URL } = useApiData(); // Get base URL from context
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-  const [recipes, setRecipes] = useState([]);
-  const [initialRecipes, setInitialRecipes] = useState([]);
-  const [newRecipe, setNewRecipe] = useState({
-    recipe_code: "",
-    sap_code: "",
-    recipe_type: "",
-    target_speed: "",
-  });
+  const [recipes, setRecipes] = useState([
+    { id: 1, recipe_code: "", recipe_type: "", target_speed: "" }
+  ]);
   const [csvFile, setCsvFile] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [updatingRecipeCode, setUpdatingRecipeCode] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [resultPopup, setResultPopup] = useState({
-    isOpen: false,
-    type: "success",
-    message: "",
-  });
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchRecipes();
-    }
-  }, [isOpen]);
+  const handleAddRow = () => {
+    const newId = recipes.length > 0 ? Math.max(...recipes.map(r => r.id)) + 1 : 1;
+    setRecipes([...recipes, { id: newId, recipe_code: "", recipe_type: "", target_speed: "" }]);
+  };
 
-  const normalizeRecipe = (recipe) => ({
-    recipe_code: recipe.recipe_code || "",
-    sap_code: recipe.sap_code || "",
-    recipe_type: recipe.recipe_type || "",
-    target_speed: recipe.target_speed ?? "",
-  });
-
-  const fetchRecipes = async () => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const token = localStorage.getItem("authToken");
-      const response = await axios.get(`${API_BASE_URL}/api/recipe-master/`, {
-        headers: { Authorization: `Token ${token}` },
-      });
-
-      const normalized = (response.data || []).map(normalizeRecipe);
-      setRecipes(normalized);
-      setInitialRecipes(normalized);
-    } catch (err) {
-      console.error("Failed to load Recipe Master:", err);
-      setError("Failed to load Recipe Master data.");
-    } finally {
-      setLoading(false);
+  const handleRemoveRow = (id) => {
+    if (recipes.length > 1) {
+      setRecipes(recipes.filter(recipe => recipe.id !== id));
     }
   };
 
-  const changedRecipes = useMemo(
-    () =>
-      recipes.filter((recipe) => {
-        const original = initialRecipes.find((item) => item.recipe_code === recipe.recipe_code);
-        if (!original) return false;
-
-        const originalSpeed = original.target_speed === "" ? "" : Number(original.target_speed);
-        const currentSpeed = recipe.target_speed === "" ? "" : Number(recipe.target_speed);
-
-        return original.recipe_type !== recipe.recipe_type || originalSpeed !== currentSpeed;
-      }),
-    [recipes, initialRecipes]
-  );
-
-  const handleCellChange = (recipeCode, field, value) => {
-    setRecipes((prev) =>
-      prev.map((recipe) =>
-        recipe.recipe_code === recipeCode ? { ...recipe, [field]: value } : recipe
-      )
-    );
+  const handleCellChange = (id, field, value) => {
+    setRecipes(recipes.map(recipe =>
+      recipe.id === id ? { ...recipe, [field]: value } : recipe
+    ));
   };
 
-  const openResultPopup = (type, message) => {
-    setResultPopup({ isOpen: true, type, message });
-  };
+  const handleSubmitManual = async () => {
+    console.log("=== MANUAL SUBMIT ===");
 
-  const handleUpdateSingleRecipe = async (recipeCode) => {
+    // Clear previous messages
     setError("");
     setSuccess("");
 
-    const recipe = recipes.find((item) => item.recipe_code === recipeCode);
-    const original = initialRecipes.find((item) => item.recipe_code === recipeCode);
-
-    if (!recipe || !original) {
-      openResultPopup("error", "Recipe row not found.");
-      return;
-    }
-
-    const originalSpeed = original.target_speed === "" ? "" : Number(original.target_speed);
-    const currentSpeed = recipe.target_speed === "" ? "" : Number(recipe.target_speed);
-    const hasChanged = original.recipe_type !== recipe.recipe_type || originalSpeed !== currentSpeed;
-
-    if (!hasChanged) {
-      openResultPopup("error", "No changes found for this recipe row.");
-      return;
-    }
-
-    if (!recipe.recipe_type || recipe.target_speed === "" || Number.isNaN(Number(recipe.target_speed)) || Number(recipe.target_speed) < 1) {
-      openResultPopup("error", "Recipe type is required and target speed must be 1 or greater.");
-      return;
-    }
-
-    setUpdatingRecipeCode(recipeCode);
-    try {
-      const token = localStorage.getItem("authToken");
-      await axios.patch(
-        `${API_BASE_URL}/api/recipe-master/${encodeURIComponent(recipe.recipe_code)}/`,
-        {
-          target_speed: Number(recipe.target_speed),
-          recipe_type: recipe.recipe_type,
-        },
-        {
-          headers: {
-            Authorization: `Token ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      setSuccess(`Recipe ${recipeCode} updated successfully.`);
-      openResultPopup("success", `Recipe ${recipeCode} updated successfully.`);
-      await fetchRecipes();
-      setTimeout(() => setSuccess(""), 3000);
-    } catch (err) {
-      console.error("Row update error:", err);
-      const errorMessage = err.response?.data?.error || err.response?.data?.message || "Failed to update recipe.";
-      setError(errorMessage);
-      openResultPopup("error", errorMessage);
-    } finally {
-      setUpdatingRecipeCode("");
-    }
-  };
-
-  const handleSubmitUpdates = async () => {
-    setError("");
-    setSuccess("");
-
-    if (changedRecipes.length === 0) {
-      setError("No changes detected to update.");
-      openResultPopup("error", "No changes detected to update.");
-      return;
-    }
-
-    const invalidRows = changedRecipes.filter(
-      (recipe) =>
-        recipe.target_speed === "" ||
-        Number.isNaN(Number(recipe.target_speed)) ||
-        Number(recipe.target_speed) < 1 ||
-        !recipe.recipe_type
+    // Validation: ensure all required fields filled
+    const validRecipes = recipes.filter(
+      (r) => r.recipe_code.trim() && r.recipe_type.trim() && r.target_speed.trim()
     );
 
-    if (invalidRows.length > 0) {
-      setError("Please provide recipe type and target speed of at least 1 for all changed rows.");
-      openResultPopup("error", "Please provide recipe type and target speed of at least 1 for all changed rows.");
+    console.log("Valid recipes:", validRecipes);
+
+    if (validRecipes.length === 0) {
+      setError("Please fill at least one complete row");
       return;
     }
 
@@ -169,181 +55,66 @@ const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
 
     try {
       const token = localStorage.getItem("authToken");
-
-      await Promise.all(
-        changedRecipes.map((recipe) =>
-          axios.patch(
-            `${API_BASE_URL}/api/recipe-master/${encodeURIComponent(recipe.recipe_code)}/`,
-            {
-              target_speed: Number(recipe.target_speed),
-              recipe_type: recipe.recipe_type,
-            },
-            {
-              headers: {
-                Authorization: `Token ${token}`,
-                "Content-Type": "application/json",
-              },
-            }
-          )
-        )
-      );
-
-      setSuccess(`Updated ${changedRecipes.length} recipe(s) successfully.`);
-      openResultPopup("success", `Updated ${changedRecipes.length} recipe(s) successfully.`);
-      await fetchRecipes();
-      setTimeout(() => setSuccess(""), 3000);
-    } catch (err) {
-      console.error("Update error:", err);
-      const errorMessage = err.response?.data?.error || err.response?.data?.message || "Failed to update Recipe Master.";
-      setError(errorMessage);
-      openResultPopup("error", errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleNewRecipeFieldChange = (field, value) => {
-    setNewRecipe((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const handleAddSingleRecipe = async () => {
-    setError("");
-    setSuccess("");
-
-    if (!newRecipe.recipe_code.trim()) {
-      setError("Recipe code is required for adding a new recipe.");
-      openResultPopup("error", "Recipe code is required for adding a new recipe.");
-      return;
-    }
-
-    if (!newRecipe.recipe_type) {
-      setError("Recipe type is required for adding a new recipe.");
-      openResultPopup("error", "Recipe type is required for adding a new recipe.");
-      return;
-    }
-
-    if (
-      newRecipe.target_speed === "" ||
-      Number.isNaN(Number(newRecipe.target_speed)) ||
-      Number(newRecipe.target_speed) < 1
-    ) {
-      setError("Target speed must be 1 or greater for new recipe.");
-      openResultPopup("error", "Target speed must be 1 or greater for new recipe.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const token = localStorage.getItem("authToken");
-      await axios.post(
-        `${API_BASE_URL}/api/recipe-master/`,
-        {
-          recipe_code: newRecipe.recipe_code.trim(),
-          sap_code: newRecipe.sap_code.trim() || null,
-          recipe_type: newRecipe.recipe_type,
-          target_speed: Number(newRecipe.target_speed),
-        },
-        {
-          headers: {
-            Authorization: `Token ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      setSuccess("New recipe added successfully.");
-      openResultPopup("success", "New recipe added successfully.");
-      setNewRecipe({ recipe_code: "", sap_code: "", recipe_type: "", target_speed: "" });
-      await fetchRecipes();
-      setTimeout(() => setSuccess(""), 3000);
-    } catch (err) {
-      console.error("Create recipe error:", err);
-      const errorMessage = err.response?.data?.error || err.response?.data?.message || "Failed to add new recipe.";
-      setError(errorMessage);
-      openResultPopup("error", errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const validTypes = [
-        "text/csv",
-        "application/vnd.ms-excel",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      ];
-      const validExtensions = [".csv", ".xls", ".xlsx"];
-      const fileExtension = "." + file.name.split(".").pop().toLowerCase();
-
-      if (!validTypes.includes(file.type) && !validExtensions.includes(fileExtension)) {
-        setError("Please upload a valid CSV, XLS, or XLSX file");
-        openResultPopup("error", "Please upload a valid CSV, XLS, or XLSX file.");
-        return;
-      }
-
-      setCsvFile(file);
-      setError("");
-    }
-  };
-
-  const handleUploadCSV = async () => {
-    if (!csvFile) {
-      setError("Please select a file first");
-      openResultPopup("error", "Please select a file first.");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-    setSuccess("");
-
-    try {
-      const token = localStorage.getItem("authToken");
+      console.log("Token:", token ? "Found" : "Not found");
 
       if (!token) {
         setError("Authentication token not found. Please login again.");
-        openResultPopup("error", "Authentication token not found. Please login again.");
         setLoading(false);
         return;
       }
 
-      const formData = new FormData();
-      formData.append("excel_file", csvFile);
+      // ✅ Correct payload as backend expects
+      const payload = {
+        data: validRecipes.map((r) => ({
+          recipe_code: r.recipe_code,
+          target_speed: parseFloat(r.target_speed),
+          recipe_type: r.recipe_type,
+        })),
+      };
 
-      const response = await axios.post(`${API_BASE_URL}/api/recipe-upload/`, formData, {
-        headers: {
-          Authorization: `Token ${token}`,
-          "Content-Type": "multipart/form-data",
-        },
-      });
+      console.log("Payload:", payload);
+      console.log("API URL:", `${API_BASE_URL}/api/recipe-upload/`);
 
-      setSuccess(`Successfully uploaded file with ${response.data.count || "multiple"} recipe(s)`);
-      openResultPopup("success", `Successfully uploaded file with ${response.data.count || "multiple"} recipe(s).`);
+      const response = await axios.post(
+        `${API_BASE_URL}/api/recipe-upload/`, // ✅ corrected endpoint (underscore)
+        payload,
+        {
+          headers: {
+            Authorization: `Token ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
+      console.log("✓ Success:", response.data);
+      alert(`✅ ${response.data.message}`);
+
+      setSuccess(
+        `Created: ${response.data.created}, Updated: ${response.data.updated}, Total Rows: ${response.data.total_rows}`
+      );
+
+      // Fetch updated recipe names after successful upload
       try {
         const recipeResponse = await axios.get(`${API_BASE_URL}/api/recipe-export-master/`, {
-          params: { format: "json" },
-          headers: { Authorization: `Token ${token}` },
+          params: { format: 'json' },
+          headers: { 'Authorization': `Token ${token}` }
         });
 
         const recipeNames = Object.keys(recipeResponse.data);
-        localStorage.setItem("recipeNames", JSON.stringify(recipeNames));
+        localStorage.setItem('recipeNames', JSON.stringify(recipeNames));
+        console.log('Recipe names updated after manual upload:', recipeNames);
       } catch (recipeErr) {
-        console.error("Failed to fetch recipe names after file upload:", recipeErr);
+        console.error('Failed to fetch recipe names after upload:', recipeErr);
       }
 
-      setCsvFile(null);
-      const fileInput = document.getElementById("csv-file-input");
-      if (fileInput) fileInput.value = "";
-
-      await fetchRecipes();
+      // Reset form
+      setRecipes([{ id: 1, recipe_code: "", recipe_type: "", target_speed: "" }]);
       setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
-      console.error("Upload Error:", err);
+      console.error("✗ Error:", err);
+      console.error("Response:", err.response?.data);
 
-      let errorMessage = "Failed to upload file. ";
+      let errorMessage = "Failed to submit recipes. ";
 
       if (err.response?.data?.message) {
         errorMessage += err.response.data.message;
@@ -358,7 +129,119 @@ const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
       }
 
       setError(errorMessage);
-      openResultPopup("error", errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const validTypes = [
+        'text/csv',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      ];
+      const validExtensions = ['.csv', '.xls', '.xlsx'];
+      const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+
+      if (!validTypes.includes(file.type) && !validExtensions.includes(fileExtension)) {
+        setError('Please upload a valid CSV, XLS, or XLSX file');
+        return;
+      }
+
+      console.log("File selected:", file.name, "Size:", file.size, "Type:", file.type);
+      setCsvFile(file);
+      setError("");
+    }
+  };
+
+  const handleUploadCSV = async () => {
+    console.log("=== FILE UPLOAD ===");
+
+    if (!csvFile) {
+      setError('Please select a file first');
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const token = localStorage.getItem('authToken');
+      console.log("Token:", token ? "Found" : "Not found");
+
+      if (!token) {
+        setError('Authentication token not found. Please login again.');
+        setLoading(false);
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('excel_file', csvFile); // Changed from 'file' to 'excel_file'
+
+      console.log("Uploading file:", csvFile.name);
+      console.log("API URL:", `${API_BASE_URL}/api/recipe-upload/`);
+      console.log("FormData field:", 'excel_file');
+
+      const response = await axios.post(
+        `${API_BASE_URL}/api/recipe-upload/`, // Updated endpoint
+        formData,
+        {
+          headers: {
+            'Authorization': `Token ${token}`,
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      );
+
+      console.log('✓ Upload Success:', response.data);
+      alert('✓ Upload Success:', response.data);
+      setSuccess(`Successfully uploaded file with ${response.data.count || 'multiple'} recipe(s)`);
+
+      // Fetch updated recipe names after successful file upload
+      try {
+        const recipeResponse = await axios.get(`${API_BASE_URL}/api/recipe-export-master/`, {
+          params: { format: 'json' },
+          headers: { 'Authorization': `Token ${token}` }
+        });
+
+        const recipeNames = Object.keys(recipeResponse.data);
+        localStorage.setItem('recipeNames', JSON.stringify(recipeNames));
+        console.log('Recipe names updated after file upload:', recipeNames);
+      } catch (recipeErr) {
+        console.error('Failed to fetch recipe names after file upload:', recipeErr);
+      }
+
+      // Reset file input
+      setCsvFile(null);
+      const fileInput = document.getElementById('csv-file-input');
+      if (fileInput) fileInput.value = '';
+
+      setTimeout(() => setSuccess(""), 3000);
+
+    } catch (err) {
+      console.error('✗ Upload Error:', err);
+      console.error('Response:', err.response?.data);
+      console.error('Status:', err.response?.status);
+
+      let errorMessage = 'Failed to upload file. ';
+
+      if (err.response?.data?.message) {
+        errorMessage += err.response.data.message;
+      } else if (err.response?.data?.error) {
+        errorMessage += err.response.data.error;
+      } else if (err.response?.status) {
+        errorMessage += `Server error: ${err.response.status}`;
+      } else if (err.request) {
+        errorMessage += 'Cannot connect to server.';
+      } else {
+        errorMessage += err.message;
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -366,41 +249,48 @@ const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
 
   const handleDownloadTemplate = () => {
     const csvContent = "recipe_code,recipe_type,target_speed\nRC001,Fabric,120\nRC002,Steel,150\n";
-    const blob = new Blob([csvContent], { type: "text/csv" });
+    const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
+    const link = document.createElement('a');
     link.href = url;
-    link.download = "recipe_template.csv";
+    link.download = 'recipe_template.csv';
     link.click();
     window.URL.revokeObjectURL(url);
-    openResultPopup("success", "Template downloaded successfully.");
+    console.log("Template downloaded");
   };
 
   const handleDownloadMaster = async () => {
     setLoading(true);
     setError("");
     try {
-      const token = localStorage.getItem("authToken");
+      const token = localStorage.getItem('authToken');
+      // Fetch JSON data (this endpoint works reliably)
       const response = await axios.get(`${API_BASE_URL}/api/recipe-export-master/`, {
-        params: { format: "csv" },
-        responseType: "blob",
-        headers: { Authorization: `Token ${token}` },
+        params: { format: 'json' },
+        headers: { 'Authorization': `Token ${token}` }
       });
 
-      const blob = new Blob([response.data], { type: "text/csv" });
+      const data = response.data;
+
+      // Build CSV content from the JSON recipe map
+      let csvContent = "recipe_code,recipe_type,target_speed\n";
+      for (const [code, info] of Object.entries(data)) {
+        csvContent += `${code},${info.type || ''},${info.target_speed || ''}\n`;
+      }
+
+      // Download using the same pattern as the working template download
+      const blob = new Blob([csvContent], { type: 'text/csv' });
       const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
+      const link = document.createElement('a');
       link.href = url;
-      link.download = "recipe_master_export.csv";
+      link.download = 'recipe_master_export.csv';
       link.click();
       window.URL.revokeObjectURL(url);
       setSuccess("Recipe Master downloaded successfully.");
-      openResultPopup("success", "Recipe Master downloaded successfully.");
       setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
       console.error("Download Error:", err);
       setError("Failed to download recipe master.");
-      openResultPopup("error", "Failed to download recipe master.");
     } finally {
       setLoading(false);
     }
@@ -442,183 +332,93 @@ const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
           )}
 
           {missingWarning && (
-            <div className="rm-alert rm-alert-error" style={{ backgroundColor: "#fff3cd", color: "#856404", borderColor: "#ffeeba" }}>
+            <div className="rm-alert rm-alert-error" style={{ backgroundColor: '#fff3cd', color: '#856404', borderColor: '#ffeeba' }}>
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
               <div>
-                <strong style={{ display: "block", marginBottom: "4px" }}>Missing Targets Detected!</strong>
+                <strong style={{ display: 'block', marginBottom: '4px' }}>Missing Targets Detected!</strong>
                 <span>The following recipes have run on the machine but are missing target speeds:</span>
-                <div style={{ marginTop: "5px", fontWeight: "bold" }}>{missingRecipes.join(", ")}</div>
-                <span style={{ display: "block", marginTop: "5px", fontSize: "0.9em" }}>
-                  Data processing is paused for these intervals. Please update them to resume data flow.
-                </span>
+                <div style={{ marginTop: '5px', fontWeight: 'bold' }}>
+                  {missingRecipes.join(', ')}
+                </div>
+                <span style={{ display: 'block', marginTop: '5px', fontSize: '0.9em' }}>Data processing is paused for these intervals. Please upload them to resume data flow.</span>
               </div>
             </div>
           )}
 
           <div className="rm-section">
-            <h3 className="rm-section-title">Add Single Recipe</h3>
+            <h3 className="rm-section-title">Manual Entry</h3>
 
             <div className="rm-table-container">
               <table className="rm-table">
                 <thead>
                   <tr>
                     <th>Recipe Code</th>
-                    <th>SAP Code</th>
                     <th>Recipe Type</th>
                     <th>Target Speed (m/min)</th>
                     <th className="rm-th-action">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td>
-                      <input
-                        type="text"
-                        className="rm-input"
-                        placeholder="e.g., RC001"
-                        value={newRecipe.recipe_code}
-                        onChange={(e) => handleNewRecipeFieldChange("recipe_code", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        className="rm-input"
-                        placeholder="Optional SAP code"
-                        value={newRecipe.sap_code}
-                        onChange={(e) => handleNewRecipeFieldChange("sap_code", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <select
-                        className="rm-select"
-                        value={newRecipe.recipe_type}
-                        onChange={(e) => handleNewRecipeFieldChange("recipe_type", e.target.value)}
-                      >
-                        <option value="">Select Type</option>
-                        <option value="Fabric">Fabric</option>
-                        <option value="Steel">Steel</option>
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        className="rm-input"
-                        placeholder="Enter speed"
-                        value={newRecipe.target_speed}
-                        onChange={(e) => handleNewRecipeFieldChange("target_speed", e.target.value)}
-                        min="1"
-                        step="0.1"
-                      />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div className="rm-button-group">
-              <button className="rm-btn rm-btn-submit" onClick={handleAddSingleRecipe} disabled={loading}>
-                {loading ? (
-                  <span className="rm-spinner"></span>
-                ) : (
-                  <>
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                    Add Recipe
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          <div className="rm-divider">
-            <span>OR</span>
-          </div>
-
-          <div className="rm-section">
-            <h3 className="rm-section-title">Edit Existing Recipes</h3>
-
-            <div className="rm-table-container">
-              <table className="rm-table">
-                <thead>
-                  <tr>
-                    <th>Recipe Code</th>
-                    <th>SAP Code</th>
-                    <th>Recipe Type</th>
-                    <th>Target Speed (m/min)</th>
-                    <th className="rm-th-action">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recipes.map((recipe) => {
-                    const isTypeMissing = !recipe.recipe_type;
-                    const isSpeedMissing = recipe.target_speed === "" || recipe.target_speed === null;
-
-                    return (
-                      <tr key={recipe.recipe_code}>
-                        <td>
-                          <input type="text" className="rm-input" value={recipe.recipe_code} disabled readOnly />
-                        </td>
-                        <td>
-                          <input type="text" className="rm-input" value={recipe.sap_code || "N/A"} disabled readOnly />
-                        </td>
-                        <td>
-                          {isTypeMissing ? (
-                            <select
-                              className="rm-select"
-                              value={recipe.recipe_type}
-                              onChange={(e) => handleCellChange(recipe.recipe_code, "recipe_type", e.target.value)}
-                            >
-                              <option value="">Select Type</option>
-                              <option value="Fabric">Fabric</option>
-                              <option value="Steel">Steel</option>
-                            </select>
-                          ) : (
-                            <input type="text" className="rm-input" value={recipe.recipe_type} disabled readOnly />
-                          )}
-                        </td>
-                        <td>
-                          <div className="rm-target-wrap">
-                            <input
-                              type="number"
-                              className="rm-input"
-                              placeholder="Enter speed"
-                              value={recipe.target_speed}
-                              onChange={(e) => handleCellChange(recipe.recipe_code, "target_speed", e.target.value)}
-                              min="1"
-                              step="0.1"
-                            />
-                            {isSpeedMissing && <span className="rm-missing-target">!</span>}
-                          </div>
-                        </td>
-                        <td className="rm-td-action">
-                          <button
-                            className="rm-btn rm-btn-submit rm-btn-row-update"
-                            onClick={() => handleUpdateSingleRecipe(recipe.recipe_code)}
-                            disabled={loading || updatingRecipeCode === recipe.recipe_code}
-                          >
-                            {updatingRecipeCode === recipe.recipe_code ? "Updating..." : "Update"}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {recipes.length === 0 && !loading && (
-                    <tr>
-                      <td colSpan="5" style={{ textAlign: "center", padding: "20px", color: "#666" }}>
-                        No recipes available.
+                  {recipes.map((recipe) => (
+                    <tr key={recipe.id}>
+                      <td>
+                        <input
+                          type="text"
+                          className="rm-input"
+                          placeholder="e.g., RC001"
+                          value={recipe.recipe_code}
+                          onChange={(e) => handleCellChange(recipe.id, 'recipe_code', e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <select
+                          className="rm-select"
+                          value={recipe.recipe_type}
+                          onChange={(e) => handleCellChange(recipe.id, 'recipe_type', e.target.value)}
+                        >
+                          <option value="">Select Type</option>
+                          <option value="Fabric">Fabric</option>
+                          <option value="Steel">Steel</option>
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          className="rm-input"
+                          placeholder="e.g., 120"
+                          value={recipe.target_speed}
+                          onChange={(e) => handleCellChange(recipe.id, 'target_speed', e.target.value)}
+                          min="0"
+                          step="0.1"
+                        />
+                      </td>
+                      <td className="rm-td-action">
+                        <button
+                          className="rm-btn-delete"
+                          onClick={() => handleRemoveRow(recipe.id)}
+                          disabled={recipes.length === 1}
+                        >
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
                       </td>
                     </tr>
-                  )}
+                  ))}
                 </tbody>
               </table>
             </div>
 
             <div className="rm-button-group">
-              <button className="rm-btn rm-btn-submit" onClick={handleSubmitUpdates} disabled={loading}>
+              <button className="rm-btn rm-btn-add" onClick={handleAddRow}>
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Row
+              </button>
+              <button className="rm-btn rm-btn-submit" onClick={handleSubmitManual} disabled={loading}>
                 {loading ? (
                   <span className="rm-spinner"></span>
                 ) : (
@@ -626,7 +426,7 @@ const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    Update All
+                    Submit Recipes
                   </>
                 )}
               </button>
@@ -653,7 +453,7 @@ const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                   </svg>
-                  <span className="rm-file-text">{csvFile ? csvFile.name : "Click to select file"}</span>
+                  <span className="rm-file-text">{csvFile ? csvFile.name : 'Click to select file'}</span>
                   <span className="rm-file-hint">CSV, XLS, or XLSX files</span>
                 </label>
               </div>
@@ -672,20 +472,15 @@ const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
                   )}
                 </button>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                  <button className="rm-btn rm-btn-template" onClick={handleDownloadTemplate} style={{ width: "100%" }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <button className="rm-btn rm-btn-template" onClick={handleDownloadTemplate} style={{ width: '100%' }}>
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                     Download Template
                   </button>
-                  <button
-                    className="rm-btn rm-btn-template"
-                    onClick={handleDownloadMaster}
-                    style={{ width: "100%", backgroundColor: "#289d6e", color: "white", borderColor: "#289d6e" }}
-                    disabled={loading}
-                  >
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ filter: "brightness(0) invert(1)" }}>
+                  <button className="rm-btn rm-btn-template" onClick={handleDownloadMaster} style={{ width: '100%', backgroundColor: '#289d6e', color: 'white', borderColor: '#289d6e' }} disabled={loading}>
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ filter: 'brightness(0) invert(1)' }}>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
                     Download Currently Active Recipes
@@ -700,38 +495,12 @@ const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
               </svg>
               <div>
                 <p className="rm-info-title">File Format Requirements:</p>
-                <p>
-                  Upload CSV, XLS, or XLSX file with columns: <strong>recipe_code</strong>, <strong>recipe_type</strong> (Fabric or Steel),
-                  <strong>target_speed</strong>
-                </p>
+                <p>Upload CSV, XLS, or XLSX file with columns: <strong>recipe_code</strong>, <strong>recipe_type</strong> (Fabric or Steel), <strong>target_speed</strong></p>
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      {resultPopup.isOpen && (
-        <>
-          <div className="rm-overlay" onClick={() => setResultPopup((prev) => ({ ...prev, isOpen: false }))} />
-          <div className="rm-modal" style={{ maxWidth: "520px", width: "90vw", maxHeight: "unset" }}>
-            <div className="rm-header">
-              <h2 className="rm-title" style={{ fontSize: "20px" }}>
-                {resultPopup.type === "success" ? "Success" : "Error"}
-              </h2>
-            </div>
-            <div className="rm-body" style={{ paddingTop: "20px" }}>
-              <div className={`rm-alert ${resultPopup.type === "success" ? "rm-alert-success" : "rm-alert-error"}`} style={{ marginBottom: "20px" }}>
-                <span>{resultPopup.message}</span>
-              </div>
-              <div className="rm-button-group" style={{ justifyContent: "flex-end" }}>
-                <button className="rm-btn rm-btn-submit" onClick={() => setResultPopup((prev) => ({ ...prev, isOpen: false }))}>
-                  OK
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
     </>
   );
 };

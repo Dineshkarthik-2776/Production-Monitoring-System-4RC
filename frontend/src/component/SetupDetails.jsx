@@ -199,19 +199,6 @@ const SetupDetails = ({ viewType = "details" }) => {
     return dateValue.replace("T", " ").replace("Z", "").substring(0, 19);
   };
 
-  const formatMetric = (value) => {
-    if (value === null || value === undefined || value === "NA" || value === "N/A" || value === "") {
-      return "N/A";
-    }
-
-    const numericValue = Number(value);
-    if (Number.isNaN(numericValue)) {
-      return "N/A";
-    }
-
-    return numericValue.toFixed(2);
-  };
-
   const selectedDetailData =
     openDetail !== null
       ? flattenedTableData.find((detail) => detail.id === openDetail)
@@ -265,38 +252,37 @@ const SetupDetails = ({ viewType = "details" }) => {
               <thead className="sd-thead">
                 <tr>
                   <th className="sd-th">Material</th>
-                  <th className="sd-th">Previous Recipe</th>
                   <th className="sd-th">Type of Style</th>
-                  <th className="sd-th">Production Date</th>
-                  <th className="sd-th">Shift</th>
                   <th className="sd-th">Std Time (min)</th>
                   <th className="sd-th">Act Time (min)</th>
                   <th className="sd-th">Static S/U (min)</th>
                   <th className="sd-th">Ramp Up (min)</th>
                   <th className="sd-th">Over Shoot (min)</th>
                   <th className="sd-th">Start Time</th>
+                  <th className="sd-th">Reason</th>
                 </tr>
               </thead>
               <tbody>
                 {flattenedTableData.map((detail, index) => (
-                  <tr
-                    key={detail.id}
-                    className={`${index % 2 === 0 ? "sd-tr sd-even" : "sd-tr sd-odd"} sd-row-clickable`}
-                    onClick={() => setOpenDetail(detail.id)}
-                  >
+                  <tr key={detail.id} className={index % 2 === 0 ? "sd-tr sd-even" : "sd-tr sd-odd"}>
                     <td className="sd-td sd-td-bold">{detail.material || "N/A"}</td>
-                    <td className="sd-td">{detail.from_recipe || "N/A"}</td>
                     <td className="sd-td">{detail.type || "N/A"}</td>
-                    <td className="sd-td">{detail.production_date || "N/A"}</td>
-                    <td className="sd-td">{detail.shift || "N/A"}</td>
-                    <td className="sd-td">{formatMetric(detail.Std)}</td>
-                    <td className="sd-td">{formatMetric(detail.act)}</td>
-                    <td className="sd-td">{formatMetric(detail.static)}</td>
-                    <td className="sd-td">{formatMetric(detail.ramp)}</td>
-                    <td className={`sd-td ${(Number(detail.shoot) || 0) > 0 ? 'sd-overshoot' : 'sd-normal'}`}>
-                      {formatMetric(detail.shoot)}
+                    <td className="sd-td">{(detail.Std || 0).toFixed(2)}</td>
+                    <td className="sd-td">{(detail.act || 0).toFixed(2)}</td>
+                    <td className="sd-td">{(detail.static || 0).toFixed(2)}</td>
+                    <td className="sd-td">{(detail.ramp || 0).toFixed(2)}</td>
+                    <td className={`sd-td ${(detail.shoot || 0) > 0 ? 'sd-overshoot' : 'sd-normal'}`}>
+                      {(detail.shoot || 0).toFixed(2)}
                     </td>
                     <td className="sd-td">{formatDateTime(detail.start_time)}</td>
+                    <td className="sd-td">
+                      <button
+                        className="sd-btn-action"
+                        onClick={() => setOpenDetail(detail.id)}
+                      >
+                        {detail.overshoot_reason && detail.overshoot_reason.trim() !== "" ? "Update Result" : "Upload Reason"}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -335,16 +321,12 @@ const SetupDetails = ({ viewType = "details" }) => {
                 <thead className="sd-detail-thead">
                   <tr>
                     <th className="sd-detail-th">Material</th>
-                    <th className="sd-detail-th">Previous Recipe</th>
-                    <th className="sd-detail-th">Production Date</th>
-                    <th className="sd-detail-th">Shift</th>
                     <th className="sd-detail-th">Std Time</th>
                     <th className="sd-detail-th">Act Time</th>
                     <th className="sd-detail-th">Static S/U</th>
                     <th className="sd-detail-th">Ramp Up</th>
                     <th className="sd-detail-th">Over Shoot</th>
                     <th className="sd-detail-th">Start Time</th>
-                    <th className="sd-detail-th">Remarks</th>
                     <th className="sd-detail-th">Category</th>
                     <th className="sd-detail-th">Reason</th>
                     <th className="sd-detail-th">Action</th>
@@ -362,21 +344,17 @@ const SetupDetails = ({ viewType = "details" }) => {
 
                     return (
                       <tr key={detail.id} className={idx % 2 === 0 ? "sd-detail-tr sd-detail-even" : "sd-detail-tr sd-detail-odd"}>
-                        <td className="sd-detail-td sd-material">{detail.material || "N/A"}</td>
-                        <td className="sd-detail-td">{detail.from_recipe || "N/A"}</td>
-                        <td className="sd-detail-td">{detail.production_date || "N/A"}</td>
-                        <td className="sd-detail-td">{detail.shift || "N/A"}</td>
-                        <td className="sd-detail-td">{formatMetric(detail.Std)}</td>
-                        <td className="sd-detail-td">{formatMetric(detail.act)}</td>
-                        <td className="sd-detail-td">{formatMetric(detail.static)}</td>
-                        <td className="sd-detail-td">{formatMetric(detail.ramp)}</td>
-                        <td className={`sd-detail-td ${(Number(detail.shoot) || 0) > 0 ? 'sd-detail-overshoot' : 'sd-detail-normal'}`}>
-                          {formatMetric(detail.shoot)}
+                        <td className="sd-detail-td sd-material">{detail.material}</td>
+                        <td className="sd-detail-td">{(detail.Std || 0).toFixed(2)}</td>
+                        <td className="sd-detail-td">{(detail.act || 0).toFixed(2)}</td>
+                        <td className="sd-detail-td">{(detail.static || 0).toFixed(2)}</td>
+                        <td className="sd-detail-td">{(detail.ramp || 0).toFixed(2)}</td>
+                        <td className={`sd-detail-td ${(detail.shoot || 0) > 0 ? 'sd-detail-overshoot' : 'sd-detail-normal'}`}>
+                          {(detail.shoot || 0).toFixed(2)}
                         </td>
                         <td className="sd-detail-td sd-timestamp">
                           {formatDateTime(detail.start_time)}
                         </td>
-                        <td className="sd-detail-td">{detail.remarks || "N/A"}</td>
                         <td className="sd-detail-td">
                           <select
                             className={`sd-select ${hasReason ? 'sd-select-filled' : ''}`}
@@ -443,7 +421,7 @@ const SetupDetails = ({ viewType = "details" }) => {
             onClick={() => setOpenDetail(null)}
           ></div>
 
-          <div className="sd-modal sd-modal-single">
+          <div className="sd-modal">
             <div className="sd-modal-header">
               <h3 className="sd-modal-title">
                 Setup Reason - {selectedDetailData.material || "N/A"}
@@ -459,85 +437,90 @@ const SetupDetails = ({ viewType = "details" }) => {
             </div>
 
             <div className="sd-modal-body">
-              {(() => {
-                const detail = selectedDetailData;
-                const hasReason = detail.overshoot_reason && detail.overshoot_reason.trim() !== "";
-                const displayReason = reasons[detail.id] !== undefined
-                  ? reasons[detail.id]
-                  : (detail.overshoot_reason || "");
-                const displayCategory = categories[detail.id] !== undefined
-                  ? categories[detail.id]
-                  : (detail.overshoot_category || "None");
+              <table className="sd-detail-table">
+                <thead className="sd-detail-thead">
+                  <tr>
+                    <th className="sd-detail-th">Material</th>
+                    <th className="sd-detail-th">Type of Style</th>
+                    <th className="sd-detail-th">Std Time</th>
+                    <th className="sd-detail-th">Act Time</th>
+                    <th className="sd-detail-th">Static S/U</th>
+                    <th className="sd-detail-th">Ramp Up</th>
+                    <th className="sd-detail-th">Over Shoot</th>
+                    <th className="sd-detail-th">Start Time</th>
+                    <th className="sd-detail-th">Category</th>
+                    <th className="sd-detail-th">Reason</th>
+                    <th className="sd-detail-th">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const detail = selectedDetailData;
+                    const hasReason = detail.overshoot_reason && detail.overshoot_reason.trim() !== "";
+                    const displayReason = reasons[detail.id] !== undefined
+                      ? reasons[detail.id]
+                      : (detail.overshoot_reason || "");
+                    const displayCategory = categories[detail.id] !== undefined
+                      ? categories[detail.id]
+                      : (detail.overshoot_category || "None");
 
-                return (
-                  <div className="sd-single-layout">
-                    <div className="sd-single-grid">
-                      <div className="sd-single-item"><span className="sd-single-label">Material</span><span className="sd-single-value">{detail.material || "N/A"}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Previous Recipe</span><span className="sd-single-value">{detail.from_recipe || "N/A"}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Type of Style</span><span className="sd-single-value">{detail.type || "N/A"}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Production Date</span><span className="sd-single-value">{detail.production_date || "N/A"}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Shift</span><span className="sd-single-value">{detail.shift || "N/A"}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Std Time</span><span className="sd-single-value">{formatMetric(detail.Std)}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Act Time</span><span className="sd-single-value">{formatMetric(detail.act)}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Static S/U</span><span className="sd-single-value">{formatMetric(detail.static)}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Ramp Up</span><span className="sd-single-value">{formatMetric(detail.ramp)}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Over Shoot</span><span className={`sd-single-value ${(Number(detail.shoot) || 0) > 0 ? "sd-detail-overshoot" : "sd-detail-normal"}`}>{formatMetric(detail.shoot)}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Start Time</span><span className="sd-single-value">{formatDateTime(detail.start_time)}</span></div>
-                      <div className="sd-single-item sd-single-item-full"><span className="sd-single-label">Remarks</span><span className="sd-single-value sd-single-wrap">{detail.remarks || "N/A"}</span></div>
-                    </div>
-
-                    <div className="sd-single-form">
-                      <div className="sd-single-inline-row">
-                        <div className="sd-single-inline-item sd-inline-category">
-                        <label className="sd-single-label">Category</label>
-                        <select
-                          className={`sd-select sd-single-select ${hasReason ? "sd-select-filled" : ""}`}
-                          value={displayCategory}
-                          onChange={(e) => handleCategoryChange(detail.id, e.target.value)}
-                        >
-                          <option value="None">None</option>
-                          <option value="Electrical">Electrical</option>
-                          <option value="Mechanical">Mechanical</option>
-                          <option value="Material">Material</option>
-                          <option value="Operational">Operational</option>
-                          <option value="Other">Other</option>
-                        </select>
-                        </div>
-
-                        <div className="sd-single-inline-item sd-inline-reason">
-                        <label className="sd-single-label">Reason</label>
-                        <input
-                          type="text"
-                          placeholder="Enter reason..."
-                          className={`sd-input sd-single-reason ${hasReason ? "sd-input-filled" : ""}`}
-                          value={displayReason}
-                          onChange={(e) => handleReasonChange(detail.id, e.target.value)}
-                        />
-                        </div>
-
-                        <div className="sd-single-inline-item sd-inline-action">
-                        <button
-                          type="button"
-                          onClick={() => handleReasonSubmit(
-                            detail.id,
-                            detail.overshoot_reason,
-                            detail.overshoot_category
-                          )}
-                          className="sd-btn-save sd-btn-save-primary"
-                          disabled={saving[detail.id]}
-                        >
-                          {saving[detail.id] ? (
-                            <span className="sd-btn-loader"></span>
-                          ) : (
-                            hasReason ? "Save Changes" : "Save Changes"
-                          )}
-                        </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
+                    return (
+                      <tr className="sd-detail-tr sd-detail-even">
+                        <td className="sd-detail-td sd-material">{detail.material || "N/A"}</td>
+                        <td className="sd-detail-td">{detail.type || "N/A"}</td>
+                        <td className="sd-detail-td">{(detail.Std || 0).toFixed(2)}</td>
+                        <td className="sd-detail-td">{(detail.act || 0).toFixed(2)}</td>
+                        <td className="sd-detail-td">{(detail.static || 0).toFixed(2)}</td>
+                        <td className="sd-detail-td">{(detail.ramp || 0).toFixed(2)}</td>
+                        <td className={`sd-detail-td ${(detail.shoot || 0) > 0 ? "sd-detail-overshoot" : "sd-detail-normal"}`}>
+                          {(detail.shoot || 0).toFixed(2)}
+                        </td>
+                        <td className="sd-detail-td sd-timestamp">{formatDateTime(detail.start_time)}</td>
+                        <td className="sd-detail-td">
+                          <select
+                            className={`sd-select ${hasReason ? "sd-select-filled" : ""}`}
+                            value={displayCategory}
+                            onChange={(e) => handleCategoryChange(detail.id, e.target.value)}
+                          >
+                            <option value="None">None</option>
+                            <option value="Electrical">Electrical</option>
+                            <option value="Mechanical">Mechanical</option>
+                            <option value="Material">Material</option>
+                            <option value="Operational">Operational</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </td>
+                        <td className="sd-detail-td">
+                          <input
+                            type="text"
+                            placeholder="Enter reason..."
+                            className={`sd-input ${hasReason ? "sd-input-filled" : ""}`}
+                            value={displayReason}
+                            onChange={(e) => handleReasonChange(detail.id, e.target.value)}
+                          />
+                        </td>
+                        <td className="sd-detail-td">
+                          <button
+                            onClick={() => handleReasonSubmit(
+                              detail.id,
+                              detail.overshoot_reason,
+                              detail.overshoot_category
+                            )}
+                            className="sd-btn-save"
+                            disabled={saving[detail.id]}
+                          >
+                            {saving[detail.id] ? (
+                              <span className="sd-btn-loader"></span>
+                            ) : (
+                              hasReason ? "Update Result" : "Save"
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })()}
+                </tbody>
+              </table>
             </div>
 
             <div className="sd-modal-footer">

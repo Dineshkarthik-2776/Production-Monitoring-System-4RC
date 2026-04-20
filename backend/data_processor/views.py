@@ -14,7 +14,6 @@ from user_authentication.permissions import IsManagerUser
 from .models import RecipeMaster, ChangeoverSummary, StandardTimeMaster
 from .serializers import (
     RecipeMasterSerializer,
-    RecipeMasterCreateSerializer,
     ChangeoverDetailSerializer,
     ChangeoverUpdateSerializer,
     StandardTimeSerializer
@@ -61,35 +60,13 @@ class StandardTimeDeleteAPIView(generics.DestroyAPIView):
 # 📁 Recipe Upload API
 # ============================================================
 
-class RecipeMasterAPIView(generics.ListCreateAPIView):
+class RecipeMasterAPIView(generics.ListAPIView):
     """
-    API endpoint to list all recipes and create a single recipe.
+    API endpoint to list all recipes.
     """
     queryset = RecipeMaster.objects.all()
     serializer_class = RecipeMasterSerializer
     permission_classes = [IsAuthenticated]
-
-    def get_serializer_class(self):
-        if self.request.method == 'POST':
-            return RecipeMasterCreateSerializer
-        return RecipeMasterSerializer
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        recipe_code = serializer.validated_data.get('recipe_code')
-        if RecipeMaster.objects.filter(recipe_code=recipe_code).exists():
-            return Response(
-                {"error": f"Recipe '{recipe_code}' already exists."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        self.perform_create(serializer)
-        return Response(
-            {"message": "Recipe created successfully.", "data": serializer.data},
-            status=status.HTTP_201_CREATED
-        )
 
 
 class RecipeMasterUpdateAPIView(generics.UpdateAPIView):
@@ -101,134 +78,9 @@ class RecipeMasterUpdateAPIView(generics.UpdateAPIView):
     serializer_class = RecipeMasterSerializer
     permission_classes = [IsAuthenticated]
 
-
-class RecipeUploadAPIView(APIView):
-    """
-    Upload recipe data using:
-    1) multipart file field `excel_file` (csv/xls/xlsx)
-    2) JSON body with `data: [{recipe_code, recipe_type, target_speed, sap_code?}, ...]`
-    """
-    permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-
-    def post(self, request, *args, **kwargs):
-        try:
-            records = []
-
-            if 'excel_file' in request.FILES:
-                uploaded_file = request.FILES['excel_file']
-                file_name = uploaded_file.name.lower()
-
-                if file_name.endswith('.csv'):
-                    df = pd.read_csv(uploaded_file)
-                elif file_name.endswith('.xls') or file_name.endswith('.xlsx'):
-                    df = pd.read_excel(uploaded_file)
-                else:
-                    return Response(
-                        {"error": "Unsupported file format. Upload CSV, XLS, or XLSX."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-
-                required_cols = {'recipe_code', 'recipe_type', 'target_speed'}
-                missing_cols = required_cols.difference(set(df.columns))
-                if missing_cols:
-                    return Response(
-                        {"error": f"Missing required columns: {', '.join(sorted(missing_cols))}"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-
-                records = df.to_dict(orient='records')
-            else:
-                payload = request.data.get('data', request.data)
-                if isinstance(payload, dict):
-                    payload = [payload]
-
-                if not isinstance(payload, list):
-                    return Response(
-                        {"error": "Invalid payload. Send a list or `data` list."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-
-                records = payload
-
-            created_count = 0
-            updated_count = 0
-            failed_rows = []
-
-            for idx, row in enumerate(records, start=1):
-                recipe_code = str((row.get('recipe_code') or '')).strip()
-                recipe_type = str((row.get('recipe_type') or '')).strip()
-                target_speed_raw = row.get('target_speed')
-                sap_code_raw = row.get('sap_code')
-
-                if not recipe_code or not recipe_type or target_speed_raw in [None, '']:
-                    failed_rows.append({"row": idx, "error": "recipe_code, recipe_type, and target_speed are required."})
-                    continue
-
-                try:
-                    target_speed = float(target_speed_raw)
-                except (TypeError, ValueError):
-                    failed_rows.append({"row": idx, "error": "target_speed must be numeric."})
-                    continue
-
-                if target_speed < 1:
-                    failed_rows.append({"row": idx, "error": "target_speed must be 1 or greater."})
-                    continue
-
-                defaults = {
-                    'recipe_type': recipe_type,
-                    'target_speed': target_speed,
-                }
-
-                sap_code = str(sap_code_raw).strip() if sap_code_raw is not None else ''
-                if sap_code:
-                    defaults['sap_code'] = sap_code
-
-                obj, created = RecipeMaster.objects.update_or_create(
-                    recipe_code=recipe_code,
-                    defaults=defaults
-                )
-
-                if created:
-                    created_count += 1
-                else:
-                    updated_count += 1
-
-            processed_count = created_count + updated_count
-            if processed_count == 0:
-                return Response(
-                    {
-                        "error": "No valid rows to process.",
-                        "failed_rows": failed_rows,
-                        "total_rows": len(records),
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            return Response(
-                {
-                    "message": "Recipe upload processed successfully.",
-                    "count": processed_count,
-                    "created": created_count,
-                    "updated": updated_count,
-                    "total_rows": len(records),
-                    "failed_rows": len(failed_rows),
-                    "errors": failed_rows,
-                },
-                status=status.HTTP_200_OK
-            )
-        except Exception as exc:
-            return Response(
-                {
-                    "error": "Failed to process recipe upload.",
-                    "details": str(exc),
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
 class RecipeExportAPIView(APIView):
     """
-    API endpoint to export all RecipeMaster data as JSON, CSV, or Excel.
+    API endpoint to export all RecipeMaster data as JSON or Excel.
     """
     permission_classes = [IsAuthenticated]
 
@@ -248,21 +100,12 @@ class RecipeExportAPIView(APIView):
             if export_format == 'json':
                 data = {
                     r.recipe_code: {
-                        "sap_code": r.sap_code,
                         "type": r.recipe_type,
                         "target_speed": r.target_speed
                     }
                     for r in recipes
                 }
                 return Response(data, status=status.HTTP_200_OK)
-
-            # CSV Format
-            if export_format == 'csv':
-                df = pd.DataFrame(list(recipes.values('recipe_code', 'sap_code', 'recipe_type', 'target_speed')))
-                response = HttpResponse(content_type='text/csv')
-                response['Content-Disposition'] = 'attachment; filename="RecipeMaster_Export.csv"'
-                df.to_csv(path_or_buf=response, index=False)
-                return response
 
             # Excel Format
             df = pd.DataFrame(list(recipes.values()))
