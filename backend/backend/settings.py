@@ -1,14 +1,18 @@
 from pathlib import Path
 import os
 from rest_framework.authentication import TokenAuthentication
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env file
+load_dotenv(BASE_DIR / '.env')
 
 # ============================================================
 # CORE SETTINGS
 # ============================================================
-SECRET_KEY = 'django-insecure-d%=f2-^t(i1w#@fcl3(j5pdl9)k&_3!!u8$xm6+uh13qeoedtf'
-DEBUG = True
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-fallback-only-for-dev')
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = ['*']
 LOGIN_URL = '/api/auth/login/'
 
@@ -87,8 +91,8 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'dashboard',
-        'USER': 'dinesh',
-        'PASSWORD': '2776',
+        'USER': 'root',
+        'PASSWORD': '0907',
         'HOST': 'localhost',
         'PORT': '3306',
     }
@@ -132,11 +136,17 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 
+from celery.schedules import crontab
+
 CELERY_BEAT_SCHEDULE = {
     'process-raw-data-every-5-minutes': {
         'task': 'process_changeover_data',
         'schedule': 300.0,
         'args': [False],
+    },
+    'sync-recipe-master-daily-at-7am': {
+        'task': 'sync_recipe_master_from_bom',
+        'schedule': crontab(hour=1, minute=30),
     },
 }
 

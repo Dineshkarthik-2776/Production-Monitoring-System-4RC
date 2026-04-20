@@ -13,7 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from user_authentication.permissions import IsManagerUser
 from .models import RecipeMaster, ChangeoverSummary, StandardTimeMaster
 from .serializers import (
-    RecipeUploadSerializer,
+    RecipeMasterSerializer,
     ChangeoverDetailSerializer,
     ChangeoverUpdateSerializer,
     StandardTimeSerializer
@@ -60,103 +60,23 @@ class StandardTimeDeleteAPIView(generics.DestroyAPIView):
 # 📁 Recipe Upload API
 # ============================================================
 
-class RecipeFileUploadAPIView(APIView):
+class RecipeMasterAPIView(generics.ListAPIView):
     """
-    API endpoint for managers to upload recipe data as file (CSV/Excel) or JSON.
+    API endpoint to list all recipes.
     """
-    parser_classes = (MultiPartParser, FormParser, JSONParser)
+    queryset = RecipeMaster.objects.all()
+    serializer_class = RecipeMasterSerializer
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, *args, **kwargs):
-        serializer = RecipeUploadSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        excel_file = serializer.validated_data.get('excel_file')
-        json_data = serializer.validated_data.get('data')
-
-        created_count = 0
-        updated_count = 0
-        df = None
-
-        try:
-            # 🧾 Option 1: Process uploaded file
-            if excel_file:
-                file_name = excel_file.name.lower()
-
-                if file_name.endswith('.csv'):
-                    df = pd.read_csv(excel_file)
-                elif file_name.endswith(('.xls', '.xlsx')):
-                    df = pd.read_excel(excel_file)
-                else:
-                    return Response(
-                        {"error": "Unsupported file type. Please upload a .csv or .xlsx file."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-
-            # 🧾 Option 2: Process JSON data
-            elif json_data:
-                df = pd.DataFrame(json_data)
-
-            # 🧩 Validate required columns
-            expected_cols = {'recipe_code', 'target_speed', 'recipe_type'}
-            missing_cols = expected_cols - set(df.columns.str.lower())
-            if missing_cols:
-                return Response(
-                    {"error": f"Missing required columns: {', '.join(missing_cols)}"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            df.columns = df.columns.str.lower().str.strip()
-
-            for _, row in df.iterrows():
-                recipe_code = str(row.get('recipe_code')).strip().upper() if pd.notna(row.get('recipe_code')) else None
-                recipe_type = str(row.get('recipe_type')).strip().lower() if pd.notna(row.get('recipe_type')) else None
-                target_speed = row.get('target_speed')
-
-                if not recipe_code or not recipe_type or pd.isna(target_speed):
-                    continue
-
-                try:
-                    target_speed = float(target_speed)
-                except ValueError:
-                    continue
-
-                obj, created = RecipeMaster.objects.update_or_create(
-                    recipe_code=recipe_code,
-                    defaults={
-                        'target_speed': target_speed,
-                        'recipe_type': recipe_type
-                    }
-                )
-
-                if created:
-                    created_count += 1
-                else:
-                    updated_count += 1
-
-            # 🔄 Requeue any skipped data that matches the newly added recipes
-            from .models import RawLineData
-            requeued_count = RawLineData.objects.filter(
-                status="SKIPPED_NO_TARGET_SPEED"
-            ).update(processed_flag=False, status="PENDING_RETRY")
-
-            return Response(
-                {
-                    "message": "Recipe Uploaded successfully!",
-                    "created": created_count,
-                    "updated": updated_count,
-                    "total_rows": len(df),
-                    "requeued_for_processing": requeued_count
-                },
-                status=status.HTTP_201_CREATED
-            )
-
-        except Exception as e:
-            return Response(
-                {"error": f"Error processing data. Details: {str(e)}"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+class RecipeMasterUpdateAPIView(generics.UpdateAPIView):
+    """
+    API endpoint to update recipe_type and target_speed.
+    recipe_code and sap_code are read-only.
+    """
+    queryset = RecipeMaster.objects.all()
+    serializer_class = RecipeMasterSerializer
+    permission_classes = [IsAuthenticated]
 
 class RecipeExportAPIView(APIView):
     """
@@ -270,11 +190,11 @@ class ChangeoverStatsAPIView(APIView):
         print("Timestamp : ",datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         print(f"1. Received params: from_date={from_date_str}, to_date={to_date_str}")
 
-        # 2️⃣ Default date range (yesterday → today)
+        # 2️⃣ Default: show all available shifts for calendar yesterday and today
         if not from_date_str and not to_date_str:
-            today = timezone.localdate()  # Use localdate for simple day calcs
-            from_date_str = (today - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
-            to_date_str = today.strftime('%Y-%m-%d')
+            now_local = timezone.localtime()
+            from_date_str = (now_local.date() - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+            to_date_str = now_local.date().strftime('%Y-%m-%d')
             print(f"2. Using default dates: {from_date_str} to {to_date_str}")
 
         # 3️⃣ Base queryset
@@ -284,18 +204,19 @@ class ChangeoverStatsAPIView(APIView):
         # 4️⃣ Apply date filtering
         if from_date_str and to_date_str:
             try:
-                from_date_obj = datetime.datetime.strptime(from_date_str, '%Y-%m-%d')
-                to_date_obj = datetime.datetime.strptime(to_date_str, '%Y-%m-%d')
+                from_date_obj = datetime.datetime.strptime(from_date_str, '%Y-%m-%d').date()
+                to_date_obj = datetime.datetime.strptime(to_date_str, '%Y-%m-%d').date()
 
-                # ✅ FIX: Correct UTC timezone handling
-                from_dt = timezone.make_aware(from_date_obj, datetime.timezone.utc)
-                to_dt = timezone.make_aware(to_date_obj + datetime.timedelta(days=1), datetime.timezone.utc)
+                print(f"4. Querying by Production Date: GTE '{from_date_obj}' and LTE '{to_date_obj}'")
 
-                print(f"4. Querying with UTC Timezone: GTE '{from_dt}' and LT '{to_dt}'")
+                # Fallback logic for old records that don't have production_date yet
+                # from_dt = 7am on from_date, to_dt = 7am on to_date + 1 day
+                from_dt_fallback = timezone.make_aware(datetime.datetime.combine(from_date_obj, datetime.time(7, 0)))
+                to_dt_fallback = timezone.make_aware(datetime.datetime.combine(to_date_obj + datetime.timedelta(days=1), datetime.time(7, 0)))
 
                 all_summaries = all_summaries.filter(
-                    recipe_change_time__gte=from_dt,
-                    recipe_change_time__lt=to_dt
+                    Q(production_date__gte=from_date_obj, production_date__lte=to_date_obj) |
+                    Q(production_date__isnull=True, recipe_change_time__gte=from_dt_fallback, recipe_change_time__lt=to_dt_fallback)
                 )
                 print(f"5. Summaries found AFTER date filter: {all_summaries.count()}")
 
@@ -310,21 +231,16 @@ class ChangeoverStatsAPIView(APIView):
         if shift:
             shift = shift.upper()
             print(f"5. Applying Shift Filter: {shift}")
-            if shift == 'A':
-                # Shift A: 07:00 to 15:00
+            if shift in ['A', 'B', 'C']:
+                if shift == 'A':
+                    fallback_filter = Q(recipe_change_time__time__range=('07:00', '15:00'))
+                elif shift == 'B':
+                    fallback_filter = Q(recipe_change_time__time__range=('15:00', '23:00'))
+                else: # C
+                    fallback_filter = Q(recipe_change_time__time__gte='23:00') | Q(recipe_change_time__time__lt='07:00')
+                
                 all_summaries = all_summaries.filter(
-                    recipe_change_time__time__range=('07:00', '15:00')
-                )
-            elif shift == 'B':
-                # Shift B: 15:00 to 23:00
-                all_summaries = all_summaries.filter(
-                    recipe_change_time__time__range=('15:00', '23:00')
-                )
-            elif shift == 'C':
-                # Shift C: 23:00 to 07:00 (Next day) - Handles midnight crossing
-                all_summaries = all_summaries.filter(
-                    Q(recipe_change_time__time__gte='23:00') |
-                    Q(recipe_change_time__time__lt='07:00')
+                    Q(shift=shift) | (Q(shift__isnull=True) & fallback_filter)
                 )
             
             print(f"6. Summaries found AFTER shift filter: {all_summaries.count()}")
