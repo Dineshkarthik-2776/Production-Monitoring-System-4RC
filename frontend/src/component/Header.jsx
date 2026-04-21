@@ -342,7 +342,7 @@ const Header = () => {
                       
                       <div className="h-request-info">
                         <p className="h-request-user">
-                          <strong>Recipe:</strong> {request.current_recipe || 'N/A'}
+                          <strong>Recipe:</strong> {request.current_recipe || <span className="na-text">N/A</span>}
                         </p>
                         <p className="h-request-user">
                           <strong>Requested by:</strong> {request.requested_by_email}

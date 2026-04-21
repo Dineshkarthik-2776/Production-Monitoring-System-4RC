@@ -11,7 +11,8 @@ from rest_framework import status, generics
 from rest_framework.parsers import MultiPartParser, FormParser ,JSONParser
 from rest_framework.permissions import IsAuthenticated
 from user_authentication.permissions import IsManagerUser
-from .models import RecipeMaster, ChangeoverSummary, StandardTimeMaster
+from .models import RecipeMaster, ChangeoverSummary, StandardTimeMaster, RawLineData
+from .tasks import process_changeover_data
 from .serializers import (
     RecipeMasterSerializer,
     RecipeMasterCreateSerializer,
@@ -61,6 +62,58 @@ class StandardTimeDeleteAPIView(generics.DestroyAPIView):
 # 📁 Recipe Upload API
 # ============================================================
 
+def _normalize_recipe_code(value):
+    return str(value or '').strip().replace(' ', '').upper()
+
+
+def _is_missing_recipe_type(recipe_type):
+    val = str(recipe_type or '').strip().lower()
+    return val in ['', 'unknown']
+
+
+def _is_missing_target_speed(target_speed):
+    return target_speed is None or float(target_speed) <= 0
+
+
+def _requeue_skipped_records_for_recipe_codes(recipe_codes):
+    """
+    Requeue skipped rows only for recipe codes that are now valid in RecipeMaster.
+    Matching is normalization-based to handle code variants like 'CAP 66' vs 'CAP66'.
+    """
+    normalized_candidates = {_normalize_recipe_code(code) for code in recipe_codes if _normalize_recipe_code(code)}
+    if not normalized_candidates:
+        return 0
+
+    recipe_master_rows = RecipeMaster.objects.all().only('recipe_code', 'recipe_type', 'target_speed')
+    valid_normalized = {
+        _normalize_recipe_code(r.recipe_code)
+        for r in recipe_master_rows
+        if _normalize_recipe_code(r.recipe_code) in normalized_candidates
+        and not _is_missing_recipe_type(r.recipe_type)
+        and not _is_missing_target_speed(r.target_speed)
+    }
+
+    if not valid_normalized:
+        return 0
+
+    # Requeue by normalized recipe code for all rows that may need recalculation after data fix.
+    candidate_rows = RawLineData.objects.filter(
+        status__in=["SKIPPED_NO_TARGET_SPEED", "PENDING_RETRY", "SUCCESS", "FAILED_OPERATIONAL_SPEED"]
+    ).only('id', 'recipe_code')
+    ids_to_requeue = [
+        row.id
+        for row in candidate_rows
+        if _normalize_recipe_code(row.recipe_code) in valid_normalized
+    ]
+
+    if not ids_to_requeue:
+        return 0
+
+    return RawLineData.objects.filter(id__in=ids_to_requeue).update(
+        processed_flag=False,
+        status="PENDING_RETRY",
+    )
+
 class RecipeMasterAPIView(generics.ListCreateAPIView):
     """
     API endpoint to list all recipes and create a single recipe.
@@ -86,8 +139,18 @@ class RecipeMasterAPIView(generics.ListCreateAPIView):
             )
 
         self.perform_create(serializer)
+        recipe_code = serializer.validated_data.get('recipe_code')
+        requeued_count = _requeue_skipped_records_for_recipe_codes([recipe_code])
+        task_id = None
+        if requeued_count > 0:
+            task_id = process_changeover_data.delay().id
         return Response(
-            {"message": "Recipe created successfully.", "data": serializer.data},
+            {
+                "message": "Recipe created successfully.",
+                "data": serializer.data,
+                "requeued_count": requeued_count,
+                "processing_task_id": task_id,
+            },
             status=status.HTTP_201_CREATED
         )
 
@@ -100,6 +163,24 @@ class RecipeMasterUpdateAPIView(generics.UpdateAPIView):
     queryset = RecipeMaster.objects.all()
     serializer_class = RecipeMasterSerializer
     permission_classes = [IsAuthenticated]
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        old_missing_type = _is_missing_recipe_type(instance.recipe_type)
+        old_missing_speed = _is_missing_target_speed(instance.target_speed)
+
+        response = super().update(request, *args, **kwargs)
+
+        instance.refresh_from_db()
+        type_became_available = old_missing_type and not _is_missing_recipe_type(instance.recipe_type)
+        speed_became_available = old_missing_speed and not _is_missing_target_speed(instance.target_speed)
+
+        if type_became_available or speed_became_available:
+            requeued_count = _requeue_skipped_records_for_recipe_codes([instance.recipe_code])
+            if requeued_count > 0:
+                process_changeover_data.delay()
+
+        return response
 
 
 class RecipeUploadAPIView(APIView):
@@ -194,6 +275,16 @@ class RecipeUploadAPIView(APIView):
                 else:
                     updated_count += 1
 
+            affected_recipe_codes = [
+                str((row.get('recipe_code') or '')).strip()
+                for row in records
+                if str((row.get('recipe_code') or '')).strip()
+            ]
+            requeued_count = _requeue_skipped_records_for_recipe_codes(affected_recipe_codes)
+            task_id = None
+            if requeued_count > 0:
+                task_id = process_changeover_data.delay().id
+
             processed_count = created_count + updated_count
             if processed_count == 0:
                 return Response(
@@ -211,6 +302,8 @@ class RecipeUploadAPIView(APIView):
                     "count": processed_count,
                     "created": created_count,
                     "updated": updated_count,
+                    "requeued_count": requeued_count,
+                    "processing_task_id": task_id,
                     "total_rows": len(records),
                     "failed_rows": len(failed_rows),
                     "errors": failed_rows,
@@ -303,28 +396,30 @@ class MissingRecipeWarningAPIView(APIView):
         from .models import RawLineData
         from django.utils import timezone
         
-        three_days_ago = timezone.now() - datetime.timedelta(days=3)
+        three_days_ago = timezone.now() - datetime.timedelta(days=30)
         
-        missing_recipes = list(RawLineData.objects.filter(
-            status="SKIPPED_NO_TARGET_SPEED",
+        warning_statuses = ["SKIPPED_NO_TARGET_SPEED", "PENDING_RETRY"]
+        missing_recipes_qs = RawLineData.objects.filter(
+            status__in=warning_statuses,
             timestamp__gte=three_days_ago
-        ).values_list('recipe_code', flat=True).distinct())
-        
-        # Ensure we display EXACTLY the string `tasks.py` expects (Strip spaces + Check SAP Map)
-        SAP_recipe_mapping = {
-            'CWBHT43BELT1': 'CP200', 'CWCH30256': 'CP 700', 'CWBP65': 'CP 650', 'CWBP60': 'CP 500',
-            'CWBHT40S564': 'CP 840', 'CWBHTCP100': 'CPJ114', 'CWBHTCP51': 'CP 51',
-            'CAP 66': 'CAP 28', 'CPJ 114': 'CPJ114'
+        )
+
+        missing_recipes = list(missing_recipes_qs.values_list('recipe_code', flat=True).distinct())
+
+        status_summary = {
+            key: missing_recipes_qs.filter(status=key).count()
+            for key in warning_statuses
         }
         
-        clean_unique_recipes = list(set(
-            SAP_recipe_mapping.get(r.strip(), r.strip()) for r in missing_recipes if r
-        ))
+        clean_unique_recipes = sorted({
+            str(r).strip() for r in missing_recipes if str(r).strip()
+        })
         
         return Response({
             "warning": bool(clean_unique_recipes),
             "message": "These recipes have run on the machine but are missing target speeds in RecipeMaster. Please upload them to prevent data loss." if clean_unique_recipes else "All running recipes have target speeds.",
-            "missing_recipe_codes": clean_unique_recipes
+            "missing_recipe_codes": clean_unique_recipes,
+            "statuses": status_summary,
         }, status=status.HTTP_200_OK)
 
 
@@ -423,27 +518,28 @@ class ChangeoverStatsAPIView(APIView):
         print(f"6. Grouped data for table: {grouped_summary_list}")
 
         # --- 2️⃣ Build structured table data ---
-
-        # ✅ FIX: N+1 query solution
-        # Fetches all objects ONCE. We will filter this list in Python.
-        # This is required to use your Serializer.
         all_individual_summaries = list(all_summaries)
         print(f"7. Fetched {len(all_individual_summaries)} individual summary objects for serializer.")
 
         table_data_list = []
         for idx, group in enumerate(grouped_summary_list, start=1):
-            change_type = group['change_over_type']
-            if not change_type:
-                continue
+            raw_change_type = group['change_over_type']
+            is_unknown_type = not raw_change_type
+            change_type = raw_change_type or 'Unknown'
 
             # Python-side filtering (FAST)
             # Find all objects that match this group
-            summaries_for_type = [
-                summary for summary in all_individual_summaries
-                if summary.change_over_type == change_type
-            ]
+            if is_unknown_type:
+                summaries_for_type = [
+                    summary for summary in all_individual_summaries
+                    if not summary.change_over_type
+                ]
+            else:
+                summaries_for_type = [
+                    summary for summary in all_individual_summaries
+                    if summary.change_over_type == change_type
+                ]
 
-            # ✅ FIX: Use your ChangeoverDetailSerializer
             detail_serializer = ChangeoverDetailSerializer(summaries_for_type, many=True)
             details_data = detail_serializer.data
 
@@ -462,7 +558,6 @@ class ChangeoverStatsAPIView(APIView):
 
         # --- 3️⃣ Build bar chart data ---
 
-        # ✅ FIX: Using your bar chart logic
         bar_chart_data = list(
             all_summaries
             .filter(overshoot_category__isnull=False)

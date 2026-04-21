@@ -220,6 +220,12 @@
   color: #9ca3af;
 }
 
+.rm-input-na,
+.rm-input-na:disabled {
+  color: #f97316;
+  font-weight: 600;
+}
+
 .rm-target-wrap {
   position: relative;
 }

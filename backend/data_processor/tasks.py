@@ -10,6 +10,13 @@ from datetime import timedelta
 from tqdm import tqdm  
 
 
+def _normalize_recipe_code(value):
+    return str(value or '').strip().replace(' ', '').upper()
+
+
+LINE_PASS_CODE = _normalize_recipe_code('LINE PASS')
+
+
 # ======================================================================
 # == B-POINT IDENTIFICATION (SETUP START)
 # ======================================================================
@@ -211,14 +218,14 @@ def process_changeover_data(dev_mode=False):
     # --- 1. Fetch master recipe data
     try:
         recipe_masters = RecipeMaster.objects.all()
-        target_map = {r.recipe_code: r.target_speed for r in recipe_masters}
-        type_map = {r.recipe_code: r.recipe_type for r in recipe_masters}
+        target_map = {_normalize_recipe_code(r.recipe_code): r.target_speed for r in recipe_masters}
+        type_map = {_normalize_recipe_code(r.recipe_code): r.recipe_type for r in recipe_masters}
     except Exception as e:
         print(f"CRITICAL ERROR: Could not fetch RecipeMaster: {e}")
         return "Task failed: Could not load recipe data."
 
     # --- 2. Fetch raw unprocessed data (Strict limit to last 3 days)
-    three_days_ago = timezone.now() - timedelta(days=3)
+    three_days_ago = timezone.now() - timedelta(days=30)
     unprocessed_qs = RawLineData.objects.filter(
         processed_flag=False,
         timestamp__gte=three_days_ago,
@@ -269,19 +276,13 @@ def process_changeover_data(dev_mode=False):
 
     print(f"Fetched {len(raw_df)} raw data records for processing.")
 
-    # --- 3. Data preparation & mapping ---
-    SAP_recipe_mapping = {
-        'CWBHT43BELT1': 'CP200', 'CWCH30256': 'CP 700', 'CWBP65': 'CP 650', 'CWBP60': 'CP 500',
-        'CWBHT40S564': 'CP 840', 'CWBHTCP100': 'CPJ114', 'CWBHTCP51': 'CP 51',
-        'CAP 66': 'CAP 28', 'CPJ 114': 'CPJ114'
-    }
-    
-    raw_df['RECIPE'] = raw_df['RECIPE'].str.strip().replace(SAP_recipe_mapping)
+    # --- 3. Data preparation ---
+    # Processing uses recipe_code directly; sap_code is display-only in Recipe Master.
+    raw_df['RECIPE'] = raw_df['RECIPE'].apply(_normalize_recipe_code)
     raw_df['Target Speed'] = raw_df['RECIPE'].map(target_map)
 
-    # 🌟 NEW LOGIC: TAG MISSING RECIPES
     # Flag missing target speeds so the frontend API receives them, but DO NOT block!
-    missing_mask = (raw_df['RECIPE'] != 'LINE PASS') & (raw_df['Target Speed'].isna())
+    missing_mask = (raw_df['RECIPE'] != LINE_PASS_CODE) & (raw_df['Target Speed'].isna())
     if missing_mask.any():
         # 1. Update status to trigger API warnings, but explicitly leave processed_flag=False!
         missing_ids = raw_df.loc[missing_mask, 'id'].tolist()
@@ -289,7 +290,7 @@ def process_changeover_data(dev_mode=False):
             RawLineData.objects.filter(id__in=missing_ids).update(status="SKIPPED_NO_TARGET_SPEED")
 
     # Filter out 'LINE PASS'
-    roll_nolp = raw_df[raw_df['RECIPE'] != 'LINE PASS'].copy().reset_index(drop=True)
+    roll_nolp = raw_df[raw_df['RECIPE'] != LINE_PASS_CODE].copy().reset_index(drop=True)
     if roll_nolp.empty:
         print("No data left after filtering 'LINE PASS'. Marking as processed.")
         with transaction.atomic():
@@ -557,8 +558,8 @@ def process_changeover_data(dev_mode=False):
             if curr_type == 'steel':
                 if row['CURRENT_RECIPE'] in ['CPJ114', 'CP200'] and row['PREVIOUS_RECIPE'] in ['CPJ114', 'CP200']:
                     changeover_val = 'STEEL-STEEL ONLY COMPOUND CHANGE'
-                elif row['CURRENT_RECIPE'] in ['CPJ370', 'CPJ 1218'] and row['PREVIOUS_RECIPE'] in ['CPJ370',
-                                                                                                    'CPJ 1218']:
+                elif row['CURRENT_RECIPE'] in ['CPJ370', 'CPJ1218'] and row['PREVIOUS_RECIPE'] in ['CPJ370',
+                                                                                                    'CPJ1218']:
                     changeover_val = 'STEEL-STEEL ONLY COMPOUND CHANGE'
                 else:
                     changeover_val = 'Steel to Steel'
@@ -633,14 +634,9 @@ def process_changeover_data(dev_mode=False):
     try:
         with transaction.atomic():
             
-            # --- 6. OPTIMIZATION: Eliminate Redundant Computation ---
-            # Exclude batches that we already successfully fully processed and saved previously
-            # so we instantly skip re-writing A->B, and exclusively process the new ones (like B->C).
-            existing_batches = set(ChangeoverSummary.objects.filter(
-                batch__in=batch_first_nonna['BATCH'].tolist()
-            ).values_list('batch', flat=True))
-            
-            batch_to_save = batch_first_nonna[~batch_first_nonna['BATCH'].isin(existing_batches)]
+            # Always upsert for the current computation window so corrected recipes
+            # can overwrite previously incomplete/unknown summaries.
+            batch_to_save = batch_first_nonna
                 
             summary_objects_created = 0
             for _, row in tqdm(batch_to_save.iterrows(), total=batch_to_save.shape[0], desc='Saving to DB'):
@@ -693,7 +689,7 @@ def process_changeover_data(dev_mode=False):
                 
                 # We natively sweep missing recipes into SKIPPED without marking them True
                 missing_target_ids = raw_df[
-                    (raw_df['RECIPE'] != 'LINE PASS') & 
+                    (raw_df['RECIPE'] != LINE_PASS_CODE) & 
                     (raw_df['Target Speed'].isna())
                 ]['id'].tolist()
 
@@ -721,7 +717,7 @@ def process_changeover_data(dev_mode=False):
                         success_ids.extend(bat_df_ids)
 
                 # Safely segregate line passes
-                line_pass_ids = raw_df[raw_df['RECIPE'] == 'LINE PASS']['id'].tolist()
+                line_pass_ids = raw_df[raw_df['RECIPE'] == LINE_PASS_CODE]['id'].tolist()
 
                 # Filter success_ids to ensure no line passes or missing targets mistakenly got in
                 success_ids = [i for i in success_ids if i not in line_pass_ids and i not in missing_target_ids]
@@ -820,13 +816,6 @@ def sync_recipe_master_from_bom():
 
         print(f"Sync complete. Created: {created_count}, Updated sap_code: {updated_count}.")
         
-        # 🔄 Requeue any skipped data that might match the newly added recipes
-        if created_count > 0:
-            requeued_count = RawLineData.objects.filter(
-                status="SKIPPED_NO_TARGET_SPEED"
-            ).update(processed_flag=False, status="PENDING_RETRY")
-            print(f"Requeued {requeued_count} records for processing due to new recipes.")
-
         return f"Success: Created {created_count}, Updated {updated_count}"
 
     except Exception as e:

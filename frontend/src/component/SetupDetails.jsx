@@ -209,7 +209,38 @@ const SetupDetails = ({ viewType = "details" }) => {
       return "N/A";
     }
 
-    return numericValue.toFixed(2);
+    const isNegative = numericValue < 0;
+    const absoluteValue = Math.abs(numericValue);
+    let minutes = Math.floor(absoluteValue);
+    let seconds = Math.round((absoluteValue - minutes) * 60);
+
+    // Handle round-up edge case like 2.999 -> 3:00
+    if (seconds === 60) {
+      minutes += 1;
+      seconds = 0;
+    }
+
+    const sign = isNegative ? "-" : "";
+    return `${sign}${minutes}:${String(seconds).padStart(2, "0")}`;
+  };
+
+  const renderNA = () => <span className="na-text">N/A</span>;
+
+  const renderValueOrNA = (value) => {
+    if (value === null || value === undefined || value === "" || value === "NA" || value === "N/A") {
+      return renderNA();
+    }
+    return value;
+  };
+
+  const renderFormattedMetric = (value) => {
+    const formattedValue = formatMetric(value);
+    return formattedValue === "N/A" ? renderNA() : formattedValue;
+  };
+
+  const renderFormattedDateTime = (value) => {
+    const formattedValue = formatDateTime(value);
+    return formattedValue === "N/A" ? renderNA() : formattedValue;
   };
 
   const selectedDetailData =
@@ -240,13 +271,13 @@ const SetupDetails = ({ viewType = "details" }) => {
                 {tableData.map((row, index) => (
                   <tr key={row.id} className={index % 2 === 0 ? "sd-tr sd-even" : "sd-tr sd-odd"}>
                     <td className="sd-td sd-td-bold">{row.type}</td>
-                    <td className="sd-td">{(row.Std || 0).toFixed(2)}</td>
-                    <td className="sd-td">{(row.act || 0).toFixed(2)}</td>
-                    <td className="sd-td">{(row.static || 0).toFixed(2)}</td>
-                    <td className="sd-td">{(row.ramp || 0).toFixed(2)}</td>
+                    <td className="sd-td">{renderFormattedMetric(row.Std)}</td>
+                    <td className="sd-td">{renderFormattedMetric(row.act)}</td>
+                    <td className="sd-td">{renderFormattedMetric(row.static)}</td>
+                    <td className="sd-td">{renderFormattedMetric(row.ramp)}</td>
                     <td className="sd-td sd-count">{row.count || 0}</td>
                     <td className={`sd-td ${(row.shoot || 0) > 0 ? 'sd-overshoot' : 'sd-normal'}`}>
-                      {(row.shoot || 0).toFixed(2)}
+                      {renderFormattedMetric(row.shoot)}
                     </td>
                     <td className="sd-td">
                       <button
@@ -284,19 +315,19 @@ const SetupDetails = ({ viewType = "details" }) => {
                     className={`${index % 2 === 0 ? "sd-tr sd-even" : "sd-tr sd-odd"} sd-row-clickable`}
                     onClick={() => setOpenDetail(detail.id)}
                   >
-                    <td className="sd-td sd-td-bold">{detail.material || "N/A"}</td>
-                    <td className="sd-td">{detail.from_recipe || "N/A"}</td>
-                    <td className="sd-td">{detail.type || "N/A"}</td>
-                    <td className="sd-td">{detail.production_date || "N/A"}</td>
-                    <td className="sd-td">{detail.shift || "N/A"}</td>
-                    <td className="sd-td">{formatMetric(detail.Std)}</td>
-                    <td className="sd-td">{formatMetric(detail.act)}</td>
-                    <td className="sd-td">{formatMetric(detail.static)}</td>
-                    <td className="sd-td">{formatMetric(detail.ramp)}</td>
+                    <td className="sd-td sd-td-bold">{renderValueOrNA(detail.material)}</td>
+                    <td className="sd-td">{renderValueOrNA(detail.from_recipe)}</td>
+                    <td className="sd-td">{renderValueOrNA(detail.type)}</td>
+                    <td className="sd-td">{renderValueOrNA(detail.production_date)}</td>
+                    <td className="sd-td">{renderValueOrNA(detail.shift)}</td>
+                    <td className="sd-td">{renderFormattedMetric(detail.Std)}</td>
+                    <td className="sd-td">{renderFormattedMetric(detail.act)}</td>
+                    <td className="sd-td">{renderFormattedMetric(detail.static)}</td>
+                    <td className="sd-td">{renderFormattedMetric(detail.ramp)}</td>
                     <td className={`sd-td ${(Number(detail.shoot) || 0) > 0 ? 'sd-overshoot' : 'sd-normal'}`}>
-                      {formatMetric(detail.shoot)}
+                      {renderFormattedMetric(detail.shoot)}
                     </td>
-                    <td className="sd-td">{formatDateTime(detail.start_time)}</td>
+                    <td className="sd-td">{renderFormattedDateTime(detail.start_time)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -344,7 +375,6 @@ const SetupDetails = ({ viewType = "details" }) => {
                     <th className="sd-detail-th">Ramp Up</th>
                     <th className="sd-detail-th">Over Shoot</th>
                     <th className="sd-detail-th">Start Time</th>
-                    <th className="sd-detail-th">Remarks</th>
                     <th className="sd-detail-th">Category</th>
                     <th className="sd-detail-th">Reason</th>
                     <th className="sd-detail-th">Action</th>
@@ -362,21 +392,20 @@ const SetupDetails = ({ viewType = "details" }) => {
 
                     return (
                       <tr key={detail.id} className={idx % 2 === 0 ? "sd-detail-tr sd-detail-even" : "sd-detail-tr sd-detail-odd"}>
-                        <td className="sd-detail-td sd-material">{detail.material || "N/A"}</td>
-                        <td className="sd-detail-td">{detail.from_recipe || "N/A"}</td>
-                        <td className="sd-detail-td">{detail.production_date || "N/A"}</td>
-                        <td className="sd-detail-td">{detail.shift || "N/A"}</td>
-                        <td className="sd-detail-td">{formatMetric(detail.Std)}</td>
-                        <td className="sd-detail-td">{formatMetric(detail.act)}</td>
-                        <td className="sd-detail-td">{formatMetric(detail.static)}</td>
-                        <td className="sd-detail-td">{formatMetric(detail.ramp)}</td>
+                        <td className="sd-detail-td sd-material">{renderValueOrNA(detail.material)}</td>
+                        <td className="sd-detail-td">{renderValueOrNA(detail.from_recipe)}</td>
+                        <td className="sd-detail-td">{renderValueOrNA(detail.production_date)}</td>
+                        <td className="sd-detail-td">{renderValueOrNA(detail.shift)}</td>
+                        <td className="sd-detail-td">{renderFormattedMetric(detail.Std)}</td>
+                        <td className="sd-detail-td">{renderFormattedMetric(detail.act)}</td>
+                        <td className="sd-detail-td">{renderFormattedMetric(detail.static)}</td>
+                        <td className="sd-detail-td">{renderFormattedMetric(detail.ramp)}</td>
                         <td className={`sd-detail-td ${(Number(detail.shoot) || 0) > 0 ? 'sd-detail-overshoot' : 'sd-detail-normal'}`}>
-                          {formatMetric(detail.shoot)}
+                          {renderFormattedMetric(detail.shoot)}
                         </td>
                         <td className="sd-detail-td sd-timestamp">
-                          {formatDateTime(detail.start_time)}
+                          {renderFormattedDateTime(detail.start_time)}
                         </td>
-                        <td className="sd-detail-td">{detail.remarks || "N/A"}</td>
                         <td className="sd-detail-td">
                           <select
                             className={`sd-select ${hasReason ? 'sd-select-filled' : ''}`}
@@ -446,7 +475,7 @@ const SetupDetails = ({ viewType = "details" }) => {
           <div className="sd-modal sd-modal-single">
             <div className="sd-modal-header">
               <h3 className="sd-modal-title">
-                Setup Reason - {selectedDetailData.material || "N/A"}
+                Setup Reason - {renderValueOrNA(selectedDetailData.material)}
               </h3>
               <button
                 className="sd-modal-close"
@@ -472,18 +501,18 @@ const SetupDetails = ({ viewType = "details" }) => {
                 return (
                   <div className="sd-single-layout">
                     <div className="sd-single-grid">
-                      <div className="sd-single-item"><span className="sd-single-label">Material</span><span className="sd-single-value">{detail.material || "N/A"}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Previous Recipe</span><span className="sd-single-value">{detail.from_recipe || "N/A"}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Type of Style</span><span className="sd-single-value">{detail.type || "N/A"}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Production Date</span><span className="sd-single-value">{detail.production_date || "N/A"}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Shift</span><span className="sd-single-value">{detail.shift || "N/A"}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Std Time</span><span className="sd-single-value">{formatMetric(detail.Std)}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Act Time</span><span className="sd-single-value">{formatMetric(detail.act)}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Static S/U</span><span className="sd-single-value">{formatMetric(detail.static)}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Ramp Up</span><span className="sd-single-value">{formatMetric(detail.ramp)}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Over Shoot</span><span className={`sd-single-value ${(Number(detail.shoot) || 0) > 0 ? "sd-detail-overshoot" : "sd-detail-normal"}`}>{formatMetric(detail.shoot)}</span></div>
-                      <div className="sd-single-item"><span className="sd-single-label">Start Time</span><span className="sd-single-value">{formatDateTime(detail.start_time)}</span></div>
-                      <div className="sd-single-item sd-single-item-full"><span className="sd-single-label">Remarks</span><span className="sd-single-value sd-single-wrap">{detail.remarks || "N/A"}</span></div>
+                      <div className="sd-single-item"><span className="sd-single-label">Material</span><span className="sd-single-value">{renderValueOrNA(detail.material)}</span></div>
+                      <div className="sd-single-item"><span className="sd-single-label">Previous Recipe</span><span className="sd-single-value">{renderValueOrNA(detail.from_recipe)}</span></div>
+                      <div className="sd-single-item"><span className="sd-single-label">Type of Style</span><span className="sd-single-value">{renderValueOrNA(detail.type)}</span></div>
+                      <div className="sd-single-item"><span className="sd-single-label">Production Date</span><span className="sd-single-value">{renderValueOrNA(detail.production_date)}</span></div>
+                      <div className="sd-single-item"><span className="sd-single-label">Shift</span><span className="sd-single-value">{renderValueOrNA(detail.shift)}</span></div>
+                      <div className="sd-single-item"><span className="sd-single-label">Std Time</span><span className="sd-single-value">{renderFormattedMetric(detail.Std)}</span></div>
+                      <div className="sd-single-item"><span className="sd-single-label">Act Time</span><span className="sd-single-value">{renderFormattedMetric(detail.act)}</span></div>
+                      <div className="sd-single-item"><span className="sd-single-label">Static S/U</span><span className="sd-single-value">{renderFormattedMetric(detail.static)}</span></div>
+                      <div className="sd-single-item"><span className="sd-single-label">Ramp Up</span><span className="sd-single-value">{renderFormattedMetric(detail.ramp)}</span></div>
+                      <div className="sd-single-item"><span className="sd-single-label">Over Shoot</span><span className={`sd-single-value ${(Number(detail.shoot) || 0) > 0 ? "sd-detail-overshoot" : "sd-detail-normal"}`}>{renderFormattedMetric(detail.shoot)}</span></div>
+                      <div className="sd-single-item"><span className="sd-single-label">Start Time</span><span className="sd-single-value">{renderFormattedDateTime(detail.start_time)}</span></div>
+                      <div className="sd-single-item sd-single-item-full"><span className="sd-single-label">Remarks</span><span className="sd-single-value sd-single-wrap">{renderValueOrNA(detail.remarks)}</span></div>
                     </div>
 
                     <div className="sd-single-form">
