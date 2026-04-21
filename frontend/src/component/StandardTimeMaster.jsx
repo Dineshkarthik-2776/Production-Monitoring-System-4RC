@@ -6,16 +6,9 @@ const StandardTimeMaster = ({ isOpen, onClose }) => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
   const [standardTimes, setStandardTimes] = useState([]);
-  const [originalStandardTimes, setOriginalStandardTimes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [showUnsavedPopup, setShowUnsavedPopup] = useState(false);
-  const [resultPopup, setResultPopup] = useState({
-    isOpen: false,
-    type: "success",
-    message: "",
-  });
 
   useEffect(() => {
     if (isOpen) {
@@ -32,10 +25,42 @@ const StandardTimeMaster = ({ isOpen, onClose }) => {
         headers: { Authorization: `Token ${token}` },
       });
       setStandardTimes(response.data);
-      setOriginalStandardTimes(response.data);
     } catch (err) {
       console.error("Failed to fetch standard times:", err);
       setError("Failed to load standard times.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddRow = () => {
+    const newId = Date.now(); // Temporary unique ID
+    setStandardTimes([
+      ...standardTimes,
+      { id: newId, isNew: true, changeover_key: "", standard_time: "" },
+    ]);
+  };
+
+  const handleRemoveRow = async (id, isNew) => {
+    if (isNew) {
+      setStandardTimes(standardTimes.filter((item) => item.id !== id));
+      return;
+    }
+
+    if (!window.confirm("Are you sure you want to delete this standard time?")) return;
+
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("authToken");
+      await axios.delete(`${API_BASE_URL}/api/standard-time/${id}/`, {
+        headers: { Authorization: `Token ${token}` },
+      });
+      setStandardTimes(standardTimes.filter((item) => item.id !== id));
+      setSuccess("Deleted successfully.");
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (err) {
+      console.error("Failed to delete:", err);
+      setError("Failed to delete record.");
     } finally {
       setLoading(false);
     }
@@ -47,55 +72,16 @@ const StandardTimeMaster = ({ isOpen, onClose }) => {
     );
   };
 
-  const hasUnsavedChanges = () => {
-    if (standardTimes.length !== originalStandardTimes.length) return true;
-
-    const byId = new Map(originalStandardTimes.map((item) => [item.id, item]));
-    return standardTimes.some((item) => {
-      const original = byId.get(item.id);
-      if (!original) return true;
-      return Number(item.standard_time) !== Number(original.standard_time);
-    });
-  };
-
-  const requestClose = () => {
-    if (hasUnsavedChanges()) {
-      setShowUnsavedPopup(true);
-      return;
-    }
-    onClose();
-  };
-
-  const handleRollback = () => {
-    setStandardTimes(originalStandardTimes);
-    setShowUnsavedPopup(false);
-    setError("");
-  };
-
-  const openResultPopup = (type, message) => {
-    setResultPopup({ isOpen: true, type, message });
-  };
-
-  const handleExitWithoutUpdate = () => {
-    setShowUnsavedPopup(false);
-    onClose();
-  };
-
   const handleSubmit = async () => {
     setError("");
     setSuccess("");
 
     const validData = standardTimes.filter(
-      (item) =>
-        item.changeover_key &&
-        item.standard_time !== "" &&
-        !Number.isNaN(Number(item.standard_time)) &&
-        Number(item.standard_time) >= 1
+      (item) => item.changeover_key.trim() && item.standard_time !== ""
     );
 
-    if (validData.length !== standardTimes.length) {
-      setError("All standard time values are required and must be 1 or greater.");
-      openResultPopup("error", "All standard time values are required and must be 1 or greater before update.");
+    if (validData.length === 0) {
+      setError("Please fill at least one complete row.");
       return;
     }
 
@@ -114,15 +100,12 @@ const StandardTimeMaster = ({ isOpen, onClose }) => {
         },
       });
 
-      setSuccess("Standard times updated successfully!");
-      openResultPopup("success", "Standard times saved successfully.");
-      fetchStandardTimes();
+      setSuccess("Standard times saved successfully!");
+      fetchStandardTimes(); // Refresh to get proper IDs from DB
       setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
       console.error("Save Error:", err);
-      const errorMessage = err.response?.data?.error || err.response?.data?.message || "Failed to save standard times.";
-      setError(errorMessage);
-      openResultPopup("error", errorMessage);
+      setError(err.response?.data?.error || "Failed to save standard times.");
     } finally {
       setLoading(false);
     }
@@ -132,12 +115,12 @@ const StandardTimeMaster = ({ isOpen, onClose }) => {
 
   return (
     <>
-      <div className="rm-overlay" onClick={requestClose} />
+      <div className="rm-overlay" onClick={onClose} />
 
       <div className="rm-modal">
         <div className="rm-header">
           <h2 className="rm-title">Standard Time Master</h2>
-          <button className="rm-close-btn" onClick={requestClose}>
+          <button className="rm-close-btn" onClick={onClose}>
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -176,6 +159,7 @@ const StandardTimeMaster = ({ isOpen, onClose }) => {
                   <tr>
                     <th>Changeover Type (Key)</th>
                     <th>Standard Time (min)</th>
+                    <th className="rm-th-action">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -187,8 +171,7 @@ const StandardTimeMaster = ({ isOpen, onClose }) => {
                           className="rm-input"
                           placeholder="e.g., Fabric to Steel"
                           value={item.changeover_key}
-                          readOnly
-                          disabled
+                          onChange={(e) => handleCellChange(item.id, "changeover_key", e.target.value)}
                         />
                       </td>
                       <td>
@@ -198,16 +181,26 @@ const StandardTimeMaster = ({ isOpen, onClose }) => {
                           placeholder="e.g., 60"
                           value={item.standard_time}
                           onChange={(e) => handleCellChange(item.id, "standard_time", e.target.value)}
-                          min="1"
+                          min="0"
                           step="1"
                         />
+                      </td>
+                      <td className="rm-td-action">
+                        <button
+                          className="rm-btn-delete"
+                          onClick={() => handleRemoveRow(item.id, item.isNew)}
+                        >
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
                       </td>
                     </tr>
                   ))}
                   {standardTimes.length === 0 && !loading && (
                     <tr>
-                      <td colSpan="2" style={{ textAlign: "center", padding: "20px", color: "#666" }}>
-                        No standard times configured.
+                      <td colSpan="3" style={{ textAlign: "center", padding: "20px", color: "#666" }}>
+                        No standard times configured. Click "Add Row" to start.
                       </td>
                     </tr>
                   )}
@@ -216,6 +209,12 @@ const StandardTimeMaster = ({ isOpen, onClose }) => {
             </div>
 
             <div className="rm-button-group">
+              <button className="rm-btn rm-btn-add" onClick={handleAddRow}>
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Row
+              </button>
               <button className="rm-btn rm-btn-submit" onClick={handleSubmit} disabled={loading}>
                 {loading ? (
                   <span className="rm-spinner"></span>
@@ -224,7 +223,7 @@ const StandardTimeMaster = ({ isOpen, onClose }) => {
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    Update All
+                    Save All
                   </>
                 )}
               </button>
@@ -232,59 +231,6 @@ const StandardTimeMaster = ({ isOpen, onClose }) => {
           </div>
         </div>
       </div>
-
-      {showUnsavedPopup && (
-        <>
-          <div className="rm-overlay" />
-          <div className="rm-modal" style={{ maxWidth: "520px", width: "90vw", maxHeight: "unset" }}>
-            <div className="rm-header">
-              <h2 className="rm-title" style={{ fontSize: "20px" }}>Unsaved Changes</h2>
-            </div>
-            <div className="rm-body" style={{ paddingTop: "20px" }}>
-              <p style={{ marginTop: 0, marginBottom: "20px", color: "#374151" }}>
-                You changed standard time values and have not clicked Update All.
-              </p>
-              <div className="rm-button-group" style={{ justifyContent: "flex-end" }}>
-                <button className="rm-btn rm-btn-add" onClick={() => setShowUnsavedPopup(false)}>
-                  Cancel
-                </button>
-                <button className="rm-btn rm-btn-add" onClick={handleRollback}>
-                  Rollback Old Values
-                </button>
-                <button className="rm-btn rm-btn-submit" onClick={handleExitWithoutUpdate}>
-                  Exit Without Update
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {resultPopup.isOpen && (
-        <>
-          <div className="rm-overlay" onClick={() => setResultPopup((prev) => ({ ...prev, isOpen: false }))} />
-          <div className="rm-modal" style={{ maxWidth: "520px", width: "90vw", maxHeight: "unset" }}>
-            <div className="rm-header">
-              <h2 className="rm-title" style={{ fontSize: "20px" }}>
-                {resultPopup.type === "success" ? "Update Successful" : "Update Failed"}
-              </h2>
-            </div>
-            <div className="rm-body" style={{ paddingTop: "20px" }}>
-              <div className={`rm-alert ${resultPopup.type === "success" ? "rm-alert-success" : "rm-alert-error"}`} style={{ marginBottom: "20px" }}>
-                <span>{resultPopup.message}</span>
-              </div>
-              <div className="rm-button-group" style={{ justifyContent: "flex-end" }}>
-                <button
-                  className="rm-btn rm-btn-submit"
-                  onClick={() => setResultPopup((prev) => ({ ...prev, isOpen: false }))}
-                >
-                  OK
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
     </>
   );
 };

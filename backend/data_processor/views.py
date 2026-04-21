@@ -15,7 +15,6 @@ from .models import RecipeMaster, ChangeoverSummary, StandardTimeMaster, RawLine
 from .tasks import process_changeover_data
 from .serializers import (
     RecipeMasterSerializer,
-    RecipeMasterCreateSerializer,
     ChangeoverDetailSerializer,
     ChangeoverUpdateSerializer,
     StandardTimeSerializer
@@ -62,97 +61,13 @@ class StandardTimeDeleteAPIView(generics.DestroyAPIView):
 # 📁 Recipe Upload API
 # ============================================================
 
-def _normalize_recipe_code(value):
-    return str(value or '').strip().replace(' ', '').upper()
-
-
-def _is_missing_recipe_type(recipe_type):
-    val = str(recipe_type or '').strip().lower()
-    return val in ['', 'unknown']
-
-
-def _is_missing_target_speed(target_speed):
-    return target_speed is None or float(target_speed) <= 0
-
-
-def _requeue_skipped_records_for_recipe_codes(recipe_codes):
+class RecipeMasterAPIView(generics.ListAPIView):
     """
-    Requeue skipped rows only for recipe codes that are now valid in RecipeMaster.
-    Matching is normalization-based to handle code variants like 'CAP 66' vs 'CAP66'.
-    """
-    normalized_candidates = {_normalize_recipe_code(code) for code in recipe_codes if _normalize_recipe_code(code)}
-    if not normalized_candidates:
-        return 0
-
-    recipe_master_rows = RecipeMaster.objects.all().only('recipe_code', 'recipe_type', 'target_speed')
-    valid_normalized = {
-        _normalize_recipe_code(r.recipe_code)
-        for r in recipe_master_rows
-        if _normalize_recipe_code(r.recipe_code) in normalized_candidates
-        and not _is_missing_recipe_type(r.recipe_type)
-        and not _is_missing_target_speed(r.target_speed)
-    }
-
-    if not valid_normalized:
-        return 0
-
-    # Requeue by normalized recipe code for all rows that may need recalculation after data fix.
-    candidate_rows = RawLineData.objects.filter(
-        status__in=["SKIPPED_NO_TARGET_SPEED", "PENDING_RETRY", "SUCCESS", "FAILED_OPERATIONAL_SPEED"]
-    ).only('id', 'recipe_code')
-    ids_to_requeue = [
-        row.id
-        for row in candidate_rows
-        if _normalize_recipe_code(row.recipe_code) in valid_normalized
-    ]
-
-    if not ids_to_requeue:
-        return 0
-
-    return RawLineData.objects.filter(id__in=ids_to_requeue).update(
-        processed_flag=False,
-        status="PENDING_RETRY",
-    )
-
-class RecipeMasterAPIView(generics.ListCreateAPIView):
-    """
-    API endpoint to list all recipes and create a single recipe.
+    API endpoint to list all recipes.
     """
     queryset = RecipeMaster.objects.all()
     serializer_class = RecipeMasterSerializer
     permission_classes = [IsAuthenticated]
-
-    def get_serializer_class(self):
-        if self.request.method == 'POST':
-            return RecipeMasterCreateSerializer
-        return RecipeMasterSerializer
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        recipe_code = serializer.validated_data.get('recipe_code')
-        if RecipeMaster.objects.filter(recipe_code=recipe_code).exists():
-            return Response(
-                {"error": f"Recipe '{recipe_code}' already exists."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        self.perform_create(serializer)
-        recipe_code = serializer.validated_data.get('recipe_code')
-        requeued_count = _requeue_skipped_records_for_recipe_codes([recipe_code])
-        task_id = None
-        if requeued_count > 0:
-            task_id = process_changeover_data.delay().id
-        return Response(
-            {
-                "message": "Recipe created successfully.",
-                "data": serializer.data,
-                "requeued_count": requeued_count,
-                "processing_task_id": task_id,
-            },
-            status=status.HTTP_201_CREATED
-        )
 
 
 class RecipeMasterUpdateAPIView(generics.UpdateAPIView):
@@ -164,164 +79,9 @@ class RecipeMasterUpdateAPIView(generics.UpdateAPIView):
     serializer_class = RecipeMasterSerializer
     permission_classes = [IsAuthenticated]
 
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        old_missing_type = _is_missing_recipe_type(instance.recipe_type)
-        old_missing_speed = _is_missing_target_speed(instance.target_speed)
-
-        response = super().update(request, *args, **kwargs)
-
-        instance.refresh_from_db()
-        type_became_available = old_missing_type and not _is_missing_recipe_type(instance.recipe_type)
-        speed_became_available = old_missing_speed and not _is_missing_target_speed(instance.target_speed)
-
-        if type_became_available or speed_became_available:
-            requeued_count = _requeue_skipped_records_for_recipe_codes([instance.recipe_code])
-            if requeued_count > 0:
-                process_changeover_data.delay()
-
-        return response
-
-
-class RecipeUploadAPIView(APIView):
-    """
-    Upload recipe data using:
-    1) multipart file field `excel_file` (csv/xls/xlsx)
-    2) JSON body with `data: [{recipe_code, recipe_type, target_speed, sap_code?}, ...]`
-    """
-    permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-
-    def post(self, request, *args, **kwargs):
-        try:
-            records = []
-
-            if 'excel_file' in request.FILES:
-                uploaded_file = request.FILES['excel_file']
-                file_name = uploaded_file.name.lower()
-
-                if file_name.endswith('.csv'):
-                    df = pd.read_csv(uploaded_file)
-                elif file_name.endswith('.xls') or file_name.endswith('.xlsx'):
-                    df = pd.read_excel(uploaded_file)
-                else:
-                    return Response(
-                        {"error": "Unsupported file format. Upload CSV, XLS, or XLSX."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-
-                required_cols = {'recipe_code', 'recipe_type', 'target_speed'}
-                missing_cols = required_cols.difference(set(df.columns))
-                if missing_cols:
-                    return Response(
-                        {"error": f"Missing required columns: {', '.join(sorted(missing_cols))}"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-
-                records = df.to_dict(orient='records')
-            else:
-                payload = request.data.get('data', request.data)
-                if isinstance(payload, dict):
-                    payload = [payload]
-
-                if not isinstance(payload, list):
-                    return Response(
-                        {"error": "Invalid payload. Send a list or `data` list."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-
-                records = payload
-
-            created_count = 0
-            updated_count = 0
-            failed_rows = []
-
-            for idx, row in enumerate(records, start=1):
-                recipe_code = str((row.get('recipe_code') or '')).strip()
-                recipe_type = str((row.get('recipe_type') or '')).strip()
-                target_speed_raw = row.get('target_speed')
-                sap_code_raw = row.get('sap_code')
-
-                if not recipe_code or not recipe_type or target_speed_raw in [None, '']:
-                    failed_rows.append({"row": idx, "error": "recipe_code, recipe_type, and target_speed are required."})
-                    continue
-
-                try:
-                    target_speed = float(target_speed_raw)
-                except (TypeError, ValueError):
-                    failed_rows.append({"row": idx, "error": "target_speed must be numeric."})
-                    continue
-
-                if target_speed < 1:
-                    failed_rows.append({"row": idx, "error": "target_speed must be 1 or greater."})
-                    continue
-
-                defaults = {
-                    'recipe_type': recipe_type,
-                    'target_speed': target_speed,
-                }
-
-                sap_code = str(sap_code_raw).strip() if sap_code_raw is not None else ''
-                if sap_code:
-                    defaults['sap_code'] = sap_code
-
-                obj, created = RecipeMaster.objects.update_or_create(
-                    recipe_code=recipe_code,
-                    defaults=defaults
-                )
-
-                if created:
-                    created_count += 1
-                else:
-                    updated_count += 1
-
-            affected_recipe_codes = [
-                str((row.get('recipe_code') or '')).strip()
-                for row in records
-                if str((row.get('recipe_code') or '')).strip()
-            ]
-            requeued_count = _requeue_skipped_records_for_recipe_codes(affected_recipe_codes)
-            task_id = None
-            if requeued_count > 0:
-                task_id = process_changeover_data.delay().id
-
-            processed_count = created_count + updated_count
-            if processed_count == 0:
-                return Response(
-                    {
-                        "error": "No valid rows to process.",
-                        "failed_rows": failed_rows,
-                        "total_rows": len(records),
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            return Response(
-                {
-                    "message": "Recipe upload processed successfully.",
-                    "count": processed_count,
-                    "created": created_count,
-                    "updated": updated_count,
-                    "requeued_count": requeued_count,
-                    "processing_task_id": task_id,
-                    "total_rows": len(records),
-                    "failed_rows": len(failed_rows),
-                    "errors": failed_rows,
-                },
-                status=status.HTTP_200_OK
-            )
-        except Exception as exc:
-            return Response(
-                {
-                    "error": "Failed to process recipe upload.",
-                    "details": str(exc),
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
 class RecipeExportAPIView(APIView):
     """
-    API endpoint to export all RecipeMaster data as JSON, CSV, or Excel.
+    API endpoint to export all RecipeMaster data as JSON or Excel.
     """
     permission_classes = [IsAuthenticated]
 
@@ -341,21 +101,12 @@ class RecipeExportAPIView(APIView):
             if export_format == 'json':
                 data = {
                     r.recipe_code: {
-                        "sap_code": r.sap_code,
                         "type": r.recipe_type,
                         "target_speed": r.target_speed
                     }
                     for r in recipes
                 }
                 return Response(data, status=status.HTTP_200_OK)
-
-            # CSV Format
-            if export_format == 'csv':
-                df = pd.DataFrame(list(recipes.values('recipe_code', 'sap_code', 'recipe_type', 'target_speed')))
-                response = HttpResponse(content_type='text/csv')
-                response['Content-Disposition'] = 'attachment; filename="RecipeMaster_Export.csv"'
-                df.to_csv(path_or_buf=response, index=False)
-                return response
 
             # Excel Format
             df = pd.DataFrame(list(recipes.values()))

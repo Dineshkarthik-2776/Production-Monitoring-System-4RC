@@ -4,7 +4,6 @@ from .views import *
 urlpatterns = [
     path("recipe-master/", RecipeMasterAPIView.as_view() , name='recipe-master-list'),
     path('recipe-master/<str:pk>/', RecipeMasterUpdateAPIView.as_view(), name='recipe-master-update'),
-    path('recipe-upload/', RecipeUploadAPIView.as_view(), name='recipe-upload'),
     path('recipe-export-master/', RecipeExportAPIView.as_view(), name='recipe-export'),
     path('changeover/update/<int:pk>/',ChangeoverUpdateAPIView.as_view(), name='changeover-update-api'),
     path('changeover-stats/', ChangeoverStatsAPIView.as_view(), name='changeover-stats-api'),

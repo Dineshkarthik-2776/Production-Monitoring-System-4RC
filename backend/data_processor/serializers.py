@@ -16,17 +16,6 @@ class RecipeMasterSerializer(serializers.ModelSerializer):
         read_only_fields = ['recipe_code', 'sap_code']
 
 
-class RecipeMasterCreateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = RecipeMaster
-        fields = ['recipe_code', 'sap_code', 'recipe_type', 'target_speed']
-
-    def validate_target_speed(self, value):
-        if value is None or value < 1:
-            raise serializers.ValidationError("target_speed must be 1 or greater.")
-        return value
-
-
 
 
 class ChangeoverDetailSerializer(serializers.ModelSerializer):
