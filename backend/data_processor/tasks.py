@@ -220,7 +220,8 @@ def process_changeover_data(dev_mode=False):
     # --- 2. Fetch raw unprocessed data (Strict limit to last 3 days)
     three_days_ago = timezone.now() - timedelta(days=3)
     unprocessed_qs = RawLineData.objects.filter(
-        processed_flag=False
+        processed_flag=False,
+        timestamp__gte=three_days_ago,
     ).order_by('timestamp')
     
     if not unprocessed_qs.exists():
