@@ -98,6 +98,7 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 #     }
 # }
 
+# DK local DB
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
