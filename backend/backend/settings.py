@@ -98,6 +98,7 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 #     }
 # }
 
+# dev-dk 
 # DK local DB
 DATABASES = {
     'default': {
