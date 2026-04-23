@@ -191,8 +191,14 @@ const SetupDetails = ({ viewType = "details" }) => {
     .sort((a, b) => {
       const aTime = a.start_time ? new Date(a.start_time).getTime() : 0;
       const bTime = b.start_time ? new Date(b.start_time).getTime() : 0;
-      return aTime - bTime;
+      return bTime - aTime;
     });
+
+  const sortedOpenRowDetails = (openRowData?.details || []).slice().sort((a, b) => {
+    const aTime = a.start_time ? new Date(a.start_time).getTime() : 0;
+    const bTime = b.start_time ? new Date(b.start_time).getTime() : 0;
+    return bTime - aTime;
+  });
 
   const formatDateTime = (dateValue) => {
     if (!dateValue) return "N/A";
@@ -381,7 +387,7 @@ const SetupDetails = ({ viewType = "details" }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {openRowData.details.map((detail, idx) => {
+                  {sortedOpenRowDetails.map((detail, idx) => {
                     const hasReason = detail.overshoot_reason && detail.overshoot_reason.trim() !== '';
                     const displayReason = reasons[detail.id] !== undefined 
                       ? reasons[detail.id] 
