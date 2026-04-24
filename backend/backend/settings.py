@@ -87,29 +87,29 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 
 # LOCAL DATABASE
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.mysql',
-#         'NAME': 'dashboard',
-#         'USER': 'root',
-#         'PASSWORD': '0907',
-#         'HOST': 'localhost',
-#         'PORT': '3306',
-#     }
-# }
-
-# dev-dk 
-# DK local DB
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'dashboard',
-        'USER': 'dinesh',
-        'PASSWORD': '2776',
+        'USER': 'root',
+        'PASSWORD': '0907',
         'HOST': 'localhost',
         'PORT': '3306',
     }
 }
+
+# dev-dk 
+# DK local DB
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.mysql',
+#         'NAME': 'dashboard',
+#         'USER': 'dinesh',
+#         'PASSWORD': '2776',
+#         'HOST': 'localhost',
+#         'PORT': '3306',
+#     }
+# }
 
 
 # ============================================================

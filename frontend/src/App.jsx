@@ -8,6 +8,7 @@ import DateIP from './component/DateIP';
 import Login from './component/Login';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ApiProvider } from './context/ApiContext';
+import { NotificationProvider } from './context/NotificationContext';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -73,7 +74,11 @@ function AppLayout() {
 }
 
 function App() {
-  return <AppLayout />;
+  return (
+    <NotificationProvider>
+      <AppLayout />
+    </NotificationProvider>
+  );
 }
 
 export default App;

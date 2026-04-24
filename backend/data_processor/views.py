@@ -560,16 +560,14 @@ class ChangeoverStatsAPIView(APIView):
 
         bar_chart_data = list(
             all_summaries
-            .filter(overshoot_category__isnull=False)
-            .exclude(overshoot_category=ChangeoverSummary.OvershootCategory.NONE)
-            .exclude(overshoot_category=ChangeoverSummary.OvershootCategory.OTHER)  # From your snippet
-            .values('overshoot_category')
+            .filter(overshoot__isnull=False)
+            .exclude(overshoot__category='None')
+            .exclude(overshoot__category='Other')
+            .values(category=F('overshoot__category'))
             .annotate(value=Count('id'))
-            .order_by('-value')  # From your snippet
+            .order_by('-value')
         )
-        # Rename field (from your snippet)
-        for item in bar_chart_data:
-            item['category'] = item.pop('overshoot_category')
+
 
         print(f"9. Final bar_chart_data: {bar_chart_data}")
         print("=" * 50 + "\n")
@@ -580,6 +578,138 @@ class ChangeoverStatsAPIView(APIView):
             "bar_chart_data": bar_chart_data
         }
         return Response(final_response, status=status.HTTP_200_OK)
+
+class ChangeoverExportAPIView(APIView):
+    """
+    API endpoint to export individual changeover records as Excel.
+    Supports from_date, to_date, and shift filters.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        try:
+            # 1. Get filters
+            from_date_str = request.query_params.get('from_date')
+            to_date_str = request.query_params.get('to_date')
+            shift = request.query_params.get('shift')
+
+            # 2. Base Queryset with join
+            queryset = ChangeoverSummary.objects.select_related('overshoot').all()
+
+            # 3. Apply Date Filtering (Same logic as Stats view)
+            if from_date_str and to_date_str:
+                from_date_obj = datetime.datetime.strptime(from_date_str, '%Y-%m-%d').date()
+                to_date_obj = datetime.datetime.strptime(to_date_str, '%Y-%m-%d').date()
+
+                from_dt_fallback = timezone.make_aware(datetime.datetime.combine(from_date_obj, datetime.time(7, 0)))
+                to_dt_fallback = timezone.make_aware(datetime.datetime.combine(to_date_obj + datetime.timedelta(days=1), datetime.time(7, 0)))
+
+                queryset = queryset.filter(
+                    Q(production_date__gte=from_date_obj, production_date__lte=to_date_obj) |
+                    Q(production_date__isnull=True, recipe_change_time__gte=from_dt_fallback, recipe_change_time__lt=to_dt_fallback)
+                )
+
+            # 4. Apply Shift Filtering
+            if shift:
+                shift = shift.upper()
+                if shift in ['A', 'B', 'C']:
+                    if shift == 'A':
+                        fallback_filter = Q(recipe_change_time__time__range=('07:00', '15:00'))
+                    elif shift == 'B':
+                        fallback_filter = Q(recipe_change_time__time__range=('15:00', '23:00'))
+                    else: # C
+                        fallback_filter = Q(recipe_change_time__time__gte='23:00') | Q(recipe_change_time__time__lt='07:00')
+                    
+                    queryset = queryset.filter(Q(shift=shift) | (Q(shift__isnull=True) & fallback_filter))
+
+            # 5. Prepare Data for Excel
+            data = []
+            for item in queryset:
+                # Calculate overshoot (Shoot = Act - Std)
+                shoot = None
+                if item.setup_time_actual is not None and item.standard_time is not None:
+                    shoot = item.setup_time_actual - item.standard_time
+
+                # Helper to format values as N/A if None
+                def val(x):
+                    return x if x is not None else "N/A"
+
+                data.append({
+                    'Previous Recipe': val(item.previous_recipe),
+                    'Current Recipe': val(item.current_recipe),
+                    'Type of Style': val(item.change_over_type),
+                    'Production Date': val(item.production_date.strftime('%Y-%m-%d') if item.production_date else None),
+                    'Shift': val(item.shift),
+                    'Std Time (min)': val(item.standard_time),
+                    'Act Time (min)': val(item.setup_time_actual),
+                    'Static S/U (min)': val(item.static_setup_time),
+                    'Ramp Up (min)': val(item.ramp_up_time),
+                    'Over Shoot (min)': val(shoot),
+                    'Start Time': val(item.recipe_change_time.strftime('%Y-%m-%d %H:%M:%S') if item.recipe_change_time else None),
+                    'Category': val(item.overshoot.category if item.overshoot else None),
+                    'Reason': val(item.overshoot.reason if item.overshoot else None),
+                })
+
+            if not data:
+                return Response({"error": "No data found for the selected filters."}, status=status.HTTP_404_NOT_FOUND)
+
+            # 6. Create Excel
+            df = pd.DataFrame(data)
+            
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Changeovers')
+                
+                workbook = writer.book
+                worksheet = writer.sheets['Changeovers']
+
+                # Define formats
+                center_fmt = workbook.add_format({'align': 'center', 'valign': 'vcenter', 'border': 1})
+                header_fmt = workbook.add_format({
+                    'bg_color': '#1F4E78',
+                    'font_color': 'white',
+                    'bold': True,
+                    'align': 'center',
+                    'valign': 'vcenter',
+                    'border': 1
+                })
+                na_fmt = workbook.add_format({
+                    'align': 'center',
+                    'valign': 'vcenter',
+                    'font_color': '#F97316', # Orange color like UI
+                    'bold': True,
+                    'border': 1
+                })
+
+                # Apply header format
+                for col_num, value in enumerate(df.columns.values):
+                    worksheet.write(0, col_num, value, header_fmt)
+
+                # Auto-adjust columns width and apply center format to data
+                for i, col in enumerate(df.columns):
+                    column_len = max(df[col].astype(str).str.len().max(), len(col)) + 4
+                    worksheet.set_column(i, i, column_len, center_fmt)
+                    
+                    # Apply conditional formatting for N/A values
+                    worksheet.conditional_format(1, i, len(df), i, {
+                        'type':     'cell',
+                        'criteria': '==',
+                        'value':    '"N/A"',
+                        'format':   na_fmt
+                    })
+
+            buffer.seek(0)
+            response = HttpResponse(
+                buffer,
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            filename = f"Changeover_Report_{from_date_str}_to_{to_date_str}.xlsx" if from_date_str else "Changeover_Report.xlsx"
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+
+        except Exception as e:
+            return Response({"error": f"Failed to generate Excel: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 # ============================================================
 # ✏️ Changeover Update API
@@ -627,8 +757,8 @@ class ChangeoverUpdateAPIView(generics.UpdateAPIView):
         force_test = request.query_params.get('test', 'false').lower() == 'true'
 
         if not force_test:
-            # Case A: First time entry? (overshoot_reason is null or empty)
-            if not instance.overshoot_reason:
+            # Case A: First time entry? (overshoot is null)
+            if not instance.overshoot_id:
                 return super().partial_update(request, *args, **kwargs)
 
             # Case B: Within 5 hours window?
@@ -646,12 +776,11 @@ class ChangeoverUpdateAPIView(generics.UpdateAPIView):
                      return super().partial_update(request, *args, **kwargs)
 
         # Case C: Window expired -> Create CORRECTION REQUEST
-        new_category = request.data.get('overshoot_category')
-        new_reason = request.data.get('overshoot_reason')
+        new_overshoot_id = request.data.get('overshoot')
 
-        if not new_category or not new_reason:
+        if not new_overshoot_id:
             return Response(
-                {"error": "Category and Reason are required for a request."},
+                {"error": "Overshoot reason is required for a request."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -661,10 +790,8 @@ class ChangeoverUpdateAPIView(generics.UpdateAPIView):
         correction_req = ChangeoverCorrectionRequest.objects.create(
             changeover=instance,
             requested_by=user,
-            old_category=instance.overshoot_category,
-            old_reason=instance.overshoot_reason,
-            new_category=new_category,
-            new_reason=new_reason,
+            old_overshoot=instance.overshoot,
+            new_overshoot_id=new_overshoot_id,
             status=ChangeoverCorrectionRequest.Status.PENDING
         )
 
@@ -716,8 +843,7 @@ class CorrectionRequestActionAPIView(APIView):
         if action == 'approve':
             # 1. Update the actual ChangeoverSummary
             summary = correction_req.changeover
-            summary.overshoot_category = correction_req.new_category
-            summary.overshoot_reason = correction_req.new_reason
+            summary.overshoot = correction_req.new_overshoot
             summary.save()
 
             # 2. Mark request as APPROVED
@@ -733,3 +859,19 @@ class CorrectionRequestActionAPIView(APIView):
 
         else:
             return Response({"error": "Invalid action. Use 'approve' or 'reject'."}, status=status.HTTP_400_BAD_REQUEST)
+
+# ============================================================
+# ⚙️ Overshoot Options API
+# ============================================================
+from .models import OvershootReasons
+from .serializers import OvershootReasonsSerializer
+
+class OvershootOptionsAPIView(generics.ListAPIView):
+    """
+    API endpoint to retrieve all overshoot reasons and categories.
+    Used by the frontend to populate dropdowns.
+    """
+    permission_classes = [IsAuthenticated]
+    queryset = OvershootReasons.objects.all()
+    serializer_class = OvershootReasonsSerializer
+

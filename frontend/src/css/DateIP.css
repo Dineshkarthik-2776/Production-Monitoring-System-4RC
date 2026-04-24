@@ -149,6 +149,33 @@
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
 }
 
+.dip-excel-btn {
+  background: #10B981;
+  color: #FFFFFF;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dip-excel-btn:hover {
+  background: #059669;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+}
+
+.dip-btn-group {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
 /* Button Loader */
 .dip-btn-loader {
   width: 16px;
@@ -205,7 +232,13 @@
   }
 
   .dip-submit-btn,
-  .dip-report-btn {
+  .dip-report-btn,
+  .dip-excel-btn {
+    width: 100%;
+  }
+
+  .dip-btn-group {
+    flex-direction: column;
     width: 100%;
   }
 

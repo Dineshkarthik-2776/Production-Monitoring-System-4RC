@@ -5,7 +5,6 @@ class RawLineData(models.Model) :
     """
     This model is associated with the 4RC table where actual Line Data read by sensors are stored.
     """
-
     id = models.BigAutoField(primary_key=True, db_column='id')
     machine_id = models.CharField(max_length=8, db_column='MachineID', null=True, blank=True)
     recipe_code = models.CharField(max_length=50, db_column='RecipeCode', null=True, blank=True)
@@ -45,19 +44,14 @@ class RecipeMaster(models.Model):
     class Meta:
         db_table = 'RecipeMaster'
 
+class OvershootReasons( models.Model ) :
+    category = models.CharField(max_length = 50 , null = True )
+    reason = models.CharField(max_length= 100 , null = True )
 
 class ChangeoverSummary(models.Model):
     """
     Processed Data which contains important statistics are stored in this Model
     """
-
-    class OvershootCategory(models.TextChoices):
-        MECHANICAL = 'Mechanical', 'Mechanical'
-        ELECTRICAL = 'Electrical', 'Electrical'
-        OPERATIONAL = 'Operational', 'Operational'
-        MATERIAL = 'Material', 'Material'
-        OTHER = 'Other', 'Other'
-        NONE = 'None', 'None'
 
     batch = models.FloatField(unique=True)
     recipe_change_time = models.DateTimeField(null=True, blank=True)
@@ -85,14 +79,8 @@ class ChangeoverSummary(models.Model):
     previous_type = models.TextField(null=True, blank=True)
     change_over_type = models.TextField(db_column='change_over', null=True, blank=True)
 
-    overshoot_category = models.CharField(
-        max_length=50,
-        choices=OvershootCategory.choices,
-        null=True,
-        blank=True,
-        default=OvershootCategory.NONE  # Set a default
-    )
-    overshoot_reason = models.TextField(null=True, blank=True, default=None)
+    overshoot = models.ForeignKey(OvershootReasons,on_delete=models.SET_NULL,null=True)
+
     remarks = models.TextField(null=True, blank=True)
     production_date = models.DateField(null=True, blank=True)
     shift = models.CharField(max_length=1, null=True, blank=True)
@@ -116,12 +104,10 @@ class ChangeoverCorrectionRequest(models.Model):
     requested_by = models.ForeignKey('user_authentication.User', on_delete=models.CASCADE)
     
     # Store old values (snapshot)
-    old_category = models.CharField(max_length=50, null=True, blank=True)
-    old_reason = models.TextField(null=True, blank=True)
+    old_overshoot = models.ForeignKey(OvershootReasons, related_name='old_correction_requests', null=True, blank=True, on_delete=models.SET_NULL)
     
     # Store new requested values
-    new_category = models.CharField(max_length=50, choices=ChangeoverSummary.OvershootCategory.choices)
-    new_reason = models.TextField()
+    new_overshoot = models.ForeignKey(OvershootReasons, related_name='new_correction_requests', on_delete=models.CASCADE, null=True, blank=True)
     
     status = models.CharField(
         max_length=20, 

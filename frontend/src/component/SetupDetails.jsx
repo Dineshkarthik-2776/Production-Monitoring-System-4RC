@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { useApiData } from "../context/ApiContext";
+import { useNotification } from "../context/NotificationContext";
 import axios from "axios";
 import "../css/SetupDetails.css";
 
 const SetupDetails = ({ viewType = "details" }) => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-  const { changeoverData, loading, error, refreshData, selectedRecipe } = useApiData();
+  const { changeoverData, loading, error, refreshData, selectedRecipe, overshootOptions } = useApiData();
+  const { showNotification } = useNotification();
   const [openRow, setOpenRow] = useState(null);
   const [openDetail, setOpenDetail] = useState(null);
   const [reasons, setReasons] = useState({});
@@ -30,14 +32,16 @@ const SetupDetails = ({ viewType = "details" }) => {
     }));
   };
 
-  const handleReasonSubmit = async (detailId, currentReason, currentCategory) => {
+  const handleReasonSubmit = async (detailId, currentOvershootId) => {
     const key = detailId;
-    const newReason = reasons[detailId] || currentReason || "";
-    const newCategory = categories[detailId] || currentCategory || "None";
+    
+    // The current state might be holding the reason ID or the reason object
+    const selectedOvershootId = reasons[detailId] || currentOvershootId;
+    const selectedCategory = categories[detailId];
 
     // Validation
-    if (!newReason.trim() && newCategory !== "None") {
-      alert('Please enter a reason for the selected category.');
+    if (!selectedOvershootId) {
+      showNotification('Please select both a category and a reason.', 'error');
       return;
     }
 
@@ -47,14 +51,13 @@ const SetupDetails = ({ viewType = "details" }) => {
       const token = localStorage.getItem('authToken');
       
       if (!token) {
-        alert('Authentication token not found. Please login again.');
+        showNotification('Authentication token not found. Please login again.', 'error');
         setSaving((prev) => ({ ...prev, [key]: false }));
         return;
       }
 
       const payload = {
-        overshoot_category: newCategory,
-        overshoot_reason: newReason
+        overshoot: selectedOvershootId
       };
 
       console.log('Sending PATCH request:', {
@@ -81,9 +84,9 @@ const SetupDetails = ({ viewType = "details" }) => {
       
       // Check if it was a correction request (status 202) or direct update (status 200)
       if (response.status === 202) {
-        alert(`✓ Update request sent to manager for approval (Recipe ID: ${detailId})`);
+        showNotification(`✓ Update request sent to manager for approval (Recipe ID: ${detailId})`, 'success');
       } else {
-        alert(`✓ Reason saved successfully for Recipe ID: ${detailId}`);
+        showNotification(`✓ Reason saved successfully for Recipe ID: ${detailId}`, 'success');
       }
       
       // Refresh data to get updated values
@@ -104,24 +107,10 @@ const SetupDetails = ({ viewType = "details" }) => {
     } catch (err) {
       console.error('Error updating reason:', err);
       console.error('Error response:', err.response);
-      
-      let errorMessage = 'Failed to save reason. ';
-      
-      if (err.response?.status === 404) {
-        errorMessage += 'Recipe not found. Please refresh the page.';
-      } else if (err.response?.status === 401) {
-        errorMessage += 'Authentication failed. Please login again.';
-      } else if (err.response?.data?.message) {
-        errorMessage += err.response.data.message;
-      } else if (err.response?.data) {
-        errorMessage += JSON.stringify(err.response.data);
-      } else if (err.message) {
-        errorMessage += err.message;
-      } else {
-        errorMessage += 'Please try again.';
-      }
-      
-      alert(errorMessage);
+
+      console.error('Failed to save reason:', err);
+      const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to save reason. Please try again.';
+      showNotification(msg, 'error');
     } finally {
       setSaving((prev) => ({ ...prev, [key]: false }));
     }
@@ -156,7 +145,7 @@ const SetupDetails = ({ viewType = "details" }) => {
   if (selectedRecipe) {
     tableData = tableData.map(row => {
       const filteredDetails = row.details?.filter(detail => 
-        detail.material && detail.material.includes(selectedRecipe)
+        detail.current_recipe && detail.current_recipe.includes(selectedRecipe)
       ) || [];
       
       return {
@@ -301,8 +290,8 @@ const SetupDetails = ({ viewType = "details" }) => {
             <table className="sd-table">
               <thead className="sd-thead">
                 <tr>
-                  <th className="sd-th">Material</th>
                   <th className="sd-th">Previous Recipe</th>
+                  <th className="sd-th">Current Recipe</th>
                   <th className="sd-th">Type of Style</th>
                   <th className="sd-th">Production Date</th>
                   <th className="sd-th">Shift</th>
@@ -321,8 +310,8 @@ const SetupDetails = ({ viewType = "details" }) => {
                     className={`${index % 2 === 0 ? "sd-tr sd-even" : "sd-tr sd-odd"} sd-row-clickable`}
                     onClick={() => setOpenDetail(detail.id)}
                   >
-                    <td className="sd-td sd-td-bold">{renderValueOrNA(detail.material)}</td>
                     <td className="sd-td">{renderValueOrNA(detail.from_recipe)}</td>
+                    <td className="sd-td sd-td-bold">{renderValueOrNA(detail.current_recipe)}</td>
                     <td className="sd-td">{renderValueOrNA(detail.type)}</td>
                     <td className="sd-td">{renderValueOrNA(detail.production_date)}</td>
                     <td className="sd-td">{renderValueOrNA(detail.shift)}</td>
@@ -371,8 +360,8 @@ const SetupDetails = ({ viewType = "details" }) => {
               <table className="sd-detail-table">
                 <thead className="sd-detail-thead">
                   <tr>
-                    <th className="sd-detail-th">Material</th>
                     <th className="sd-detail-th">Previous Recipe</th>
+                    <th className="sd-detail-th">Current Recipe</th>
                     <th className="sd-detail-th">Production Date</th>
                     <th className="sd-detail-th">Shift</th>
                     <th className="sd-detail-th">Std Time</th>
@@ -398,8 +387,8 @@ const SetupDetails = ({ viewType = "details" }) => {
 
                     return (
                       <tr key={detail.id} className={idx % 2 === 0 ? "sd-detail-tr sd-detail-even" : "sd-detail-tr sd-detail-odd"}>
-                        <td className="sd-detail-td sd-material">{renderValueOrNA(detail.material)}</td>
                         <td className="sd-detail-td">{renderValueOrNA(detail.from_recipe)}</td>
+                        <td className="sd-detail-td sd-material">{renderValueOrNA(detail.current_recipe)}</td>
                         <td className="sd-detail-td">{renderValueOrNA(detail.production_date)}</td>
                         <td className="sd-detail-td">{renderValueOrNA(detail.shift)}</td>
                         <td className="sd-detail-td">{renderFormattedMetric(detail.Std)}</td>
@@ -416,31 +405,38 @@ const SetupDetails = ({ viewType = "details" }) => {
                           <select
                             className={`sd-select ${hasReason ? 'sd-select-filled' : ''}`}
                             value={displayCategory}
-                            onChange={(e) => handleCategoryChange(detail.id, e.target.value)}
+                            onChange={(e) => {
+                              handleCategoryChange(detail.id, e.target.value);
+                              handleReasonChange(detail.id, ""); // Reset reason when category changes
+                            }}
                           >
-                            <option value="None">None</option>
-                            <option value="Electrical">Electrical</option>
-                            <option value="Mechanical">Mechanical</option>
-                            <option value="Material">Material</option>
-                            <option value="Operational">Operational</option>
-                            <option value="Other">Other</option>
+                            <option value="">Select Category</option>
+                            {[...new Set(overshootOptions.map(opt => opt.category))].map(cat => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
                           </select>
                         </td>
                         <td className="sd-detail-td">
-                          <input
-                            type="text"
-                            placeholder="Enter reason..."
-                            className={`sd-input ${hasReason ? 'sd-input-filled' : ''}`}
-                            value={displayReason}
+                          <select
+                            className={`sd-select ${hasReason ? 'sd-select-filled' : ''}`}
+                            value={reasons[detail.id] !== undefined ? reasons[detail.id] : (detail.overshoot || "")}
                             onChange={(e) => handleReasonChange(detail.id, e.target.value)}
-                          />
+                            disabled={!displayCategory}
+                          >
+                            <option value="">Select Reason</option>
+                            {overshootOptions
+                              .filter(opt => opt.category === displayCategory)
+                              .map(opt => (
+                                <option key={opt.id} value={opt.id}>{opt.reason}</option>
+                              ))
+                            }
+                          </select>
                         </td>
                         <td className="sd-detail-td">
                           <button
                             onClick={() => handleReasonSubmit(
                               detail.id, 
-                              detail.overshoot_reason,
-                              detail.overshoot_category
+                              detail.overshoot
                             )}
                             className="sd-btn-save"
                             disabled={saving[detail.id]}
@@ -481,7 +477,7 @@ const SetupDetails = ({ viewType = "details" }) => {
           <div className="sd-modal sd-modal-single">
             <div className="sd-modal-header">
               <h3 className="sd-modal-title">
-                Setup Reason - {renderValueOrNA(selectedDetailData.material)}
+                Setup Reason - {renderValueOrNA(selectedDetailData.current_recipe)}
               </h3>
               <button
                 className="sd-modal-close"
@@ -507,8 +503,8 @@ const SetupDetails = ({ viewType = "details" }) => {
                 return (
                   <div className="sd-single-layout">
                     <div className="sd-single-grid">
-                      <div className="sd-single-item"><span className="sd-single-label">Material</span><span className="sd-single-value">{renderValueOrNA(detail.material)}</span></div>
                       <div className="sd-single-item"><span className="sd-single-label">Previous Recipe</span><span className="sd-single-value">{renderValueOrNA(detail.from_recipe)}</span></div>
+                      <div className="sd-single-item"><span className="sd-single-label">Current Recipe</span><span className="sd-single-value">{renderValueOrNA(detail.current_recipe)}</span></div>
                       <div className="sd-single-item"><span className="sd-single-label">Type of Style</span><span className="sd-single-value">{renderValueOrNA(detail.type)}</span></div>
                       <div className="sd-single-item"><span className="sd-single-label">Production Date</span><span className="sd-single-value">{renderValueOrNA(detail.production_date)}</span></div>
                       <div className="sd-single-item"><span className="sd-single-label">Shift</span><span className="sd-single-value">{renderValueOrNA(detail.shift)}</span></div>
@@ -528,26 +524,34 @@ const SetupDetails = ({ viewType = "details" }) => {
                         <select
                           className={`sd-select sd-single-select ${hasReason ? "sd-select-filled" : ""}`}
                           value={displayCategory}
-                          onChange={(e) => handleCategoryChange(detail.id, e.target.value)}
+                          onChange={(e) => {
+                            handleCategoryChange(detail.id, e.target.value);
+                            handleReasonChange(detail.id, ""); // Reset reason
+                          }}
                         >
-                          <option value="None">None</option>
-                          <option value="Electrical">Electrical</option>
-                          <option value="Mechanical">Mechanical</option>
-                          <option value="Material">Material</option>
-                          <option value="Operational">Operational</option>
-                          <option value="Other">Other</option>
+                          <option value="">Select Category</option>
+                          {[...new Set(overshootOptions.map(opt => opt.category))].map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
                         </select>
                         </div>
 
                         <div className="sd-single-inline-item sd-inline-reason">
                         <label className="sd-single-label">Reason</label>
-                        <input
-                          type="text"
-                          placeholder="Enter reason..."
-                          className={`sd-input sd-single-reason ${hasReason ? "sd-input-filled" : ""}`}
-                          value={displayReason}
+                        <select
+                          className={`sd-select sd-single-select ${hasReason ? "sd-select-filled" : ""}`}
+                          value={reasons[detail.id] !== undefined ? reasons[detail.id] : (detail.overshoot || "")}
                           onChange={(e) => handleReasonChange(detail.id, e.target.value)}
-                        />
+                          disabled={!displayCategory}
+                        >
+                          <option value="">Select Reason</option>
+                          {overshootOptions
+                            .filter(opt => opt.category === displayCategory)
+                            .map(opt => (
+                              <option key={opt.id} value={opt.id}>{opt.reason}</option>
+                            ))
+                          }
+                        </select>
                         </div>
 
                         <div className="sd-single-inline-item sd-inline-action">
@@ -555,8 +559,7 @@ const SetupDetails = ({ viewType = "details" }) => {
                           type="button"
                           onClick={() => handleReasonSubmit(
                             detail.id,
-                            detail.overshoot_reason,
-                            detail.overshoot_category
+                            detail.overshoot
                           )}
                           className="sd-btn-save sd-btn-save-primary"
                           disabled={saving[detail.id]}

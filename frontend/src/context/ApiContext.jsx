@@ -27,6 +27,7 @@ export const ApiProvider = ({ children }) => {
   const [selectedShift, setSelectedShift] = useState(''); // '', 'A', 'B', 'C'
   const [selectedRecipe, setSelectedRecipe] = useState(''); // For recipe filter
   const [recipeNames, setRecipeNames] = useState([]); // List of all recipe names
+  const [overshootOptions, setOvershootOptions] = useState([]); // Dynamic overshoot categories/reasons
   
   const pollingIntervalRef = useRef(null);
 
@@ -124,6 +125,23 @@ export const ApiProvider = ({ children }) => {
     }
   };
 
+  // Fetch overshoot options from API
+  const fetchOvershootOptions = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) return;
+
+      const response = await axios.get(`${API_BASE_URL}/api/overshoot-options/`, {
+        headers: { 'Authorization': `Token ${token}` }
+      });
+
+      setOvershootOptions(response.data);
+      console.log('Overshoot options fetched:', response.data);
+    } catch (err) {
+      console.error('Failed to fetch overshoot options:', err);
+    }
+  };
+
   // Start polling every 5 minutes
   const startPolling = () => {
     if (pollingIntervalRef.current) {
@@ -148,6 +166,7 @@ export const ApiProvider = ({ children }) => {
   useEffect(() => {
     fetchChangeoverStats(dateRange.from_date, dateRange.to_date, selectedShift);
     fetchRecipeNames(); // Fetch recipe names on mount
+    fetchOvershootOptions(); // Fetch overshoot options on mount
     startPolling();
 
     // Cleanup on unmount
@@ -172,10 +191,12 @@ export const ApiProvider = ({ children }) => {
     selectedShift,
     selectedRecipe,
     recipeNames,
+    overshootOptions,
     updateDateRange,
     updateShiftFilter,
     updateRecipeFilter,
     fetchRecipeNames,
+    fetchOvershootOptions,
     refreshData: () => fetchChangeoverStats(dateRange.from_date, dateRange.to_date, selectedShift),
     API_BASE_URL,
   };

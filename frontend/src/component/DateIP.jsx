@@ -4,6 +4,7 @@ import "react-date-range/dist/styles.css";
 import "react-date-range/dist/theme/default.css"; 
 import "../css/DateIP.css";
 import { useApiData } from "../context/ApiContext";
+import { useNotification } from "../context/NotificationContext";
 
 const DateIP = () => {
   const { 
@@ -18,6 +19,7 @@ const DateIP = () => {
     updateShiftFilter,
     updateRecipeFilter
   } = useApiData();
+  const { showNotification } = useNotification();
   
   const [range, setRange] = useState([
     {
@@ -72,7 +74,7 @@ const handleGenerateReport = async () => {
       const data = await response.json();
       const errorMessage =
         data.error || "Unknown error occurred while generating report.";
-      alert(`⚠️ ${errorMessage}`);
+      showNotification(`⚠️ ${errorMessage}`, "warning");
       return; // Stop here (don’t try to download anything)
     }
 
@@ -88,17 +90,62 @@ const handleGenerateReport = async () => {
       a.remove();
       window.URL.revokeObjectURL(url);
 
-      alert("✅ Report downloaded successfully!");
+      showNotification("✅ Report downloaded successfully!", "success");
       return;
     }
 
     // 🧩 Case 3: Unknown or invalid file type
-    alert("❌ Unexpected response format. Please contact support or check backend.");
+    showNotification("❌ Unexpected response format. Please contact support or check backend.", "error");
   } catch (error) {
     console.error("Error downloading report:", error);
-    alert("❌ Failed to download report. Check console for details.");
+    showNotification("❌ Failed to download report. Check console for details.", "error");
   }
 };
+
+const handleDownloadExcel = async () => {
+  try {
+    const startDate = dateRange.from_date;
+    const endDate = dateRange.to_date;
+    const shift = selectedShift;
+
+    let url = `${API_BASE_URL}/api/changeover-export/?from_date=${startDate}&to_date=${endDate}`;
+    if (shift) url += `&shift=${shift}`;
+
+    console.log("Downloading Excel from:", url);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Token ${localStorage.getItem("authToken")}`,
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        showNotification("⚠️ No data found for the selected period.", "warning");
+      } else {
+        throw new Error("Failed to download Excel.");
+      }
+      return;
+    }
+
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = `Changeover_Report_${startDate}_to_${endDate}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(downloadUrl);
+
+    showNotification("✅ Excel downloaded successfully!", "success");
+  } catch (error) {
+    console.error("Error downloading Excel:", error);
+    showNotification("❌ Failed to download Excel. Check console for details.", "error");
+  }
+};
+
 
   return (
     <>
@@ -175,12 +222,34 @@ const handleGenerateReport = async () => {
         </div>
 
         {/* Generate Report Button */}
-        <button 
-          className="dip-report-btn" 
-          onClick={handleGenerateReport}
-        >
-          Generate Report
-        </button>
+        <div className="dip-btn-group">
+          <button 
+            className="dip-report-btn" 
+            onClick={handleGenerateReport}
+          >
+            Generate Report
+          </button>
+          <button 
+            className="dip-excel-btn" 
+            onClick={handleDownloadExcel}
+          >
+            <svg 
+              className="dip-excel-icon" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+              style={{width: '18px', height: '18px', marginRight: '8px'}}
+            >
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2} 
+                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" 
+              />
+            </svg>
+            Download Excel
+          </button>
+        </div>
       </div>
     </>
   );

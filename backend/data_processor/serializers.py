@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ChangeoverSummary, RecipeMaster, ChangeoverCorrectionRequest, StandardTimeMaster
+from .models import ChangeoverSummary, RecipeMaster, ChangeoverCorrectionRequest, StandardTimeMaster, OvershootReasons
 
 
 class StandardTimeSerializer(serializers.ModelSerializer):
@@ -7,6 +7,11 @@ class StandardTimeSerializer(serializers.ModelSerializer):
         model = StandardTimeMaster
         fields = '__all__'
         read_only_fields = ['changeover_key']
+
+class OvershootReasonsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OvershootReasons
+        fields = '__all__'
 
 
 class RecipeMasterSerializer(serializers.ModelSerializer):
@@ -36,7 +41,7 @@ class ChangeoverDetailSerializer(serializers.ModelSerializer):
     """
     # 1. We're RENAMING fields from our database (like 'current_recipe')
     #    to match your frontend's JSON (like 'material').
-    material = serializers.CharField(source='current_recipe')
+    current_recipe = serializers.CharField()
     from_recipe = serializers.CharField(source='previous_recipe')
     to_recipe = serializers.CharField(source='current_recipe')
     Std = serializers.FloatField(source='standard_time')
@@ -44,6 +49,9 @@ class ChangeoverDetailSerializer(serializers.ModelSerializer):
     static = serializers.FloatField(source='static_setup_time')
     ramp = serializers.FloatField(source='ramp_up_time')
     start_time = serializers.DateTimeField(source='recipe_change_time')
+    overshoot_category = serializers.CharField(source='overshoot.category', read_only=True)
+    overshoot_reason = serializers.CharField(source='overshoot.reason', read_only=True)
+    overshoot = serializers.PrimaryKeyRelatedField(queryset=OvershootReasons.objects.all(), write_only=True, required=False, allow_null=True)
 
     # 2. This creates a NEW field called 'shoot' that doesn't exist
     #    in our database.
@@ -53,7 +61,7 @@ class ChangeoverDetailSerializer(serializers.ModelSerializer):
         model = ChangeoverSummary
         fields = [
             'id',
-            'material',
+            'current_recipe',
             'from_recipe',
             'to_recipe',
             'start_time',
@@ -62,6 +70,7 @@ class ChangeoverDetailSerializer(serializers.ModelSerializer):
             'static',
             'ramp',
             'shoot',
+            'overshoot',
             'overshoot_category',
             'overshoot_reason',
             'remarks',
@@ -85,7 +94,7 @@ class ChangeoverDetailSerializer(serializers.ModelSerializer):
         stats_fields = ['Std', 'act', 'static', 'ramp', 'shoot']
         for field in stats_fields:
             if representation.get(field) is None:
-                representation[field] = "NA"
+                representation[field] = "N/A"
                 
         return representation
 
@@ -97,8 +106,7 @@ class ChangeoverUpdateSerializer(serializers.ModelSerializer):
         model = ChangeoverSummary
         # These are the only two fields a worker is allowed to change
         fields = [
-            'overshoot_category',
-            'overshoot_reason'
+            'overshoot'
         ]
 
 class ChangeoverCorrectionRequestSerializer(serializers.ModelSerializer):
@@ -108,6 +116,11 @@ class ChangeoverCorrectionRequestSerializer(serializers.ModelSerializer):
     changeover_id = serializers.PrimaryKeyRelatedField(read_only=True, source='changeover.id')
     requested_by_email = serializers.EmailField(read_only=True, source='requested_by.email')
     current_recipe = serializers.CharField(read_only=True, source='changeover.current_recipe')
+    
+    old_category = serializers.CharField(read_only=True, source='old_overshoot.category', default=None)
+    old_reason = serializers.CharField(read_only=True, source='old_overshoot.reason', default=None)
+    new_category = serializers.CharField(read_only=True, source='new_overshoot.category', default=None)
+    new_reason = serializers.CharField(read_only=True, source='new_overshoot.reason', default=None)
     
     class Meta:
         model = ChangeoverCorrectionRequest

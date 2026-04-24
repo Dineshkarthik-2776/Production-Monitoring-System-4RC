@@ -5,6 +5,7 @@ import "../css/header.css";
 import User from "../assets/user.png";
 import RecipeMaster from "./RecipeMaster";
 import StandardTimeMaster from "./StandardTimeMaster";
+import { useNotification } from "../context/NotificationContext";
 
 const Header = () => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -20,6 +21,7 @@ const Header = () => {
   const dropdownRef = useRef(null);
   const pollingRef = useRef(null);
   const navigate = useNavigate();
+  const { showNotification } = useNotification();
 
   // Get user data from localStorage
   const user = JSON.parse(localStorage.getItem("user") || '{}');
@@ -67,7 +69,7 @@ const Header = () => {
     try {
       const token = localStorage.getItem('authToken');
       if (!token) {
-        alert('Authentication required');
+        showNotification('Authentication required', 'error');
         return;
       }
 
@@ -82,14 +84,14 @@ const Header = () => {
         }
       );
 
-      alert(`Request ${action}d successfully!`);
+      showNotification(`Request ${action}d successfully!`, 'success');
       
       // Refresh the list
       await fetchCorrectionRequests();
       
     } catch (err) {
       console.error('Failed to process request:', err);
-      alert(`Failed to ${action} request: ${err.response?.data?.error || err.message}`);
+      showNotification(`Failed to ${action} request: ${err.response?.data?.error || err.message}`, 'error');
     } finally {
       setProcessingRequest(null);
     }
