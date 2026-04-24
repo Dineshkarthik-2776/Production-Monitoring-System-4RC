@@ -151,6 +151,10 @@
   white-space: nowrap;
 }
 
+.sd-th-left {
+  text-align: left;
+}
+
 .sd-tr {
   transition: background 0.2s ease;
 }
@@ -179,6 +183,10 @@
   font-size: 14px;
   color: #1F2937;
   border-bottom: 1px solid #93C5FD;
+}
+
+.sd-td-left {
+  text-align: left;
 }
 
 .sd-td-bold {

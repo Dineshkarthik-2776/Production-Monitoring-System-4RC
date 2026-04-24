@@ -6,6 +6,7 @@ import "../css/RecipeMaster.css";
 
 const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+  const ALLOWED_RECIPE_TYPES = ["Fabric", "Steel"];
 
   const [recipes, setRecipes] = useState([]);
   const [initialRecipes, setInitialRecipes] = useState([]);
@@ -31,10 +32,17 @@ const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
     }
   }, [isOpen]);
 
+  const normalizeRecipeType = (value) => {
+    const type = String(value || "").trim().toLowerCase();
+    if (type === "fabric") return "Fabric";
+    if (type === "steel") return "Steel";
+    return "";
+  };
+
   const normalizeRecipe = (recipe) => ({
     recipe_code: recipe.recipe_code || "",
     sap_code: recipe.sap_code || "",
-    recipe_type: recipe.recipe_type || "",
+    recipe_type: normalizeRecipeType(recipe.recipe_type),
     target_speed: recipe.target_speed ?? "",
   });
 
@@ -74,9 +82,10 @@ const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
   );
 
   const handleCellChange = (recipeCode, field, value) => {
+    const nextValue = field === "recipe_type" ? normalizeRecipeType(value) : value;
     setRecipes((prev) =>
       prev.map((recipe) =>
-        recipe.recipe_code === recipeCode ? { ...recipe, [field]: value } : recipe
+        recipe.recipe_code === recipeCode ? { ...recipe, [field]: nextValue } : recipe
       )
     );
   };
@@ -106,7 +115,7 @@ const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
       return;
     }
 
-    if (!recipe.recipe_type || recipe.target_speed === "" || Number.isNaN(Number(recipe.target_speed)) || Number(recipe.target_speed) < 1) {
+    if (!ALLOWED_RECIPE_TYPES.includes(recipe.recipe_type) || recipe.target_speed === "" || Number.isNaN(Number(recipe.target_speed)) || Number(recipe.target_speed) < 1) {
       openResultPopup("error", "Recipe type is required and target speed must be 1 or greater.");
       return;
     }
@@ -157,7 +166,7 @@ const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
         recipe.target_speed === "" ||
         Number.isNaN(Number(recipe.target_speed)) ||
         Number(recipe.target_speed) < 1 ||
-        !recipe.recipe_type
+        !ALLOWED_RECIPE_TYPES.includes(recipe.recipe_type)
     );
 
     if (invalidRows.length > 0) {
@@ -334,7 +343,6 @@ const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
                 </thead>
                 <tbody>
                   {recipes.map((recipe) => {
-                    const isTypeMissing = !recipe.recipe_type;
                     const isSpeedMissing = recipe.target_speed === "" || recipe.target_speed === null;
 
                     return (
@@ -352,19 +360,15 @@ const RecipeMaster = ({ isOpen, onClose, missingWarning, missingRecipes }) => {
                           />
                         </td>
                         <td>
-                          {isTypeMissing ? (
-                            <select
-                              className="rm-select"
-                              value={recipe.recipe_type}
-                              onChange={(e) => handleCellChange(recipe.recipe_code, "recipe_type", e.target.value)}
-                            >
-                              <option value="">Select Type</option>
-                              <option value="Fabric">Fabric</option>
-                              <option value="Steel">Steel</option>
-                            </select>
-                          ) : (
-                            <input type="text" className="rm-input" value={recipe.recipe_type} disabled readOnly />
-                          )}
+                          <select
+                            className="rm-select"
+                            value={recipe.recipe_type}
+                            onChange={(e) => handleCellChange(recipe.recipe_code, "recipe_type", e.target.value)}
+                          >
+                            <option value="">Select Type</option>
+                            <option value="Fabric">Fabric</option>
+                            <option value="Steel">Steel</option>
+                          </select>
                         </td>
                         <td>
                           <div className="rm-target-wrap">

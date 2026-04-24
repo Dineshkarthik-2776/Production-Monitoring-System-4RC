@@ -290,17 +290,17 @@ const SetupDetails = ({ viewType = "details" }) => {
             <table className="sd-table">
               <thead className="sd-thead">
                 <tr>
-                  <th className="sd-th">Previous Recipe</th>
-                  <th className="sd-th">Current Recipe</th>
-                  <th className="sd-th">Type of Style</th>
-                  <th className="sd-th">Production Date</th>
+                  <th className="sd-th sd-th-left">Previous Recipe</th>
+                  <th className="sd-th sd-th-left">Current Recipe</th>
+                  <th className="sd-th sd-th-left">Type of Style</th>
+                  <th className="sd-th sd-th-left">Production Date</th>
                   <th className="sd-th">Shift</th>
                   <th className="sd-th">Std Time (min)</th>
                   <th className="sd-th">Act Time (min)</th>
                   <th className="sd-th">Static S/U (min)</th>
                   <th className="sd-th">Ramp Up (min)</th>
                   <th className="sd-th">Over Shoot (min)</th>
-                  <th className="sd-th">Start Time</th>
+                  <th className="sd-th sd-th-left">Start Time</th>
                 </tr>
               </thead>
               <tbody>
@@ -310,10 +310,10 @@ const SetupDetails = ({ viewType = "details" }) => {
                     className={`${index % 2 === 0 ? "sd-tr sd-even" : "sd-tr sd-odd"} sd-row-clickable`}
                     onClick={() => setOpenDetail(detail.id)}
                   >
-                    <td className="sd-td">{renderValueOrNA(detail.from_recipe)}</td>
-                    <td className="sd-td sd-td-bold">{renderValueOrNA(detail.current_recipe)}</td>
-                    <td className="sd-td">{renderValueOrNA(detail.type)}</td>
-                    <td className="sd-td">{renderValueOrNA(detail.production_date)}</td>
+                    <td className="sd-td sd-td-left">{renderValueOrNA(detail.from_recipe)}</td>
+                    <td className="sd-td sd-td-bold sd-td-left">{renderValueOrNA(detail.current_recipe)}</td>
+                    <td className="sd-td sd-td-left">{renderValueOrNA(detail.type)}</td>
+                    <td className="sd-td sd-td-left">{renderValueOrNA(detail.production_date)}</td>
                     <td className="sd-td">{renderValueOrNA(detail.shift)}</td>
                     <td className="sd-td">{renderFormattedMetric(detail.Std)}</td>
                     <td className="sd-td">{renderFormattedMetric(detail.act)}</td>
@@ -322,7 +322,7 @@ const SetupDetails = ({ viewType = "details" }) => {
                     <td className={`sd-td ${(Number(detail.shoot) || 0) > 0 ? 'sd-overshoot' : 'sd-normal'}`}>
                       {renderFormattedMetric(detail.shoot)}
                     </td>
-                    <td className="sd-td">{renderFormattedDateTime(detail.start_time)}</td>
+                    <td className="sd-td sd-td-left">{renderFormattedDateTime(detail.start_time)}</td>
                   </tr>
                 ))}
               </tbody>

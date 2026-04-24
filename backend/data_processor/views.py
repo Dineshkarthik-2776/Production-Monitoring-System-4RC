@@ -581,8 +581,8 @@ class ChangeoverStatsAPIView(APIView):
 
 class ChangeoverExportAPIView(APIView):
     """
-    API endpoint to export individual changeover records as Excel.
-    Supports from_date, to_date, and shift filters.
+    API endpoint to export individual changeover records as Excel or CSV.
+    Supports from_date, to_date, shift, and format filters.
     """
     permission_classes = [IsAuthenticated]
 
@@ -592,6 +592,7 @@ class ChangeoverExportAPIView(APIView):
             from_date_str = request.query_params.get('from_date')
             to_date_str = request.query_params.get('to_date')
             shift = request.query_params.get('shift')
+            export_format = request.query_params.get('format', 'excel').lower()
 
             # 2. Base Queryset with join
             queryset = ChangeoverSummary.objects.select_related('overshoot').all()
@@ -648,13 +649,21 @@ class ChangeoverExportAPIView(APIView):
                     'Start Time': val(item.recipe_change_time.strftime('%Y-%m-%d %H:%M:%S') if item.recipe_change_time else None),
                     'Category': val(item.overshoot.category if item.overshoot else None),
                     'Reason': val(item.overshoot.reason if item.overshoot else None),
+                    'Remarks': val(item.remarks),
                 })
 
             if not data:
                 return Response({"error": "No data found for the selected filters."}, status=status.HTTP_404_NOT_FOUND)
 
-            # 6. Create Excel
+            # 6. Create CSV (if requested) or Excel
             df = pd.DataFrame(data)
+
+            if export_format == 'csv':
+                response = HttpResponse(content_type='text/csv')
+                filename = f"Changeover_Report_{from_date_str}_to_{to_date_str}.csv" if from_date_str else "Changeover_Report.csv"
+                response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                df.to_csv(path_or_buf=response, index=False)
+                return response
             
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
