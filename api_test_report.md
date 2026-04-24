@@ -24,6 +24,13 @@
 | 13 | `/api/missing-recipes-warning/` | `GET` | `200` | PASS ✅ |
 | 14 | `/api/correction-requests/` | `GET` | `403` | EXPECTED ⚠️ |
 | 15 | `/api/correction-requests/<id>/action/` | `POST` | `N/A` | FAIL ❌ |
+| 16 | `/api/auth/signup/` | `POST` | `N/A` | NOT TESTED ℹ️ |
+| 17 | `/api/recipe-upload/` | `POST` | `N/A` | NOT TESTED ℹ️ |
+| 18 | `/api/changeover-export/?from_date=<date>&to_date=<date>&shift=<A|B|C>&format=csv` | `GET` | `N/A` | NOT TESTED ℹ️ |
+| 19 | `/api/changeover-export/?from_date=<date>&to_date=<date>&shift=<A|B|C>` | `GET` | `N/A` | NOT TESTED ℹ️ |
+| 20 | `/api/standard-time/<id>/` | `DELETE` | `N/A` | NOT TESTED ℹ️ |
+| 21 | `/api/overshoot-options/` | `GET` | `N/A` | NOT TESTED ℹ️ |
+| 22 | `/api/reports/summary/?start_date=<date>&end_date=<date>` | `GET` | `N/A` | NOT TESTED ℹ️ |
 
 ---
 
@@ -668,5 +675,92 @@
 ```json
 {"note": "No PENDING correction requests in DB."}
 ```
+
+---
+
+### 16. POST /api/auth/signup/
+
+**Method:** `POST`  
+**URL:** `http://127.0.0.1:8000/api/auth/signup/`  
+**Status:** `N/A`  
+> **Note:** Creates a new user account.
+
+**Sample Request Payload:**
+```json
+{
+  "email": "newuser@jkti.com",
+  "password": "StrongPassword123",
+  "name": "New User",
+  "role": "worker"
+}
+```
+
+---
+
+### 17. POST /api/recipe-upload/
+
+**Method:** `POST`  
+**URL:** `http://127.0.0.1:8000/api/recipe-upload/`  
+**Status:** `N/A`  
+> **Note:** Supports multipart file upload (`excel_file`) and JSON payload (`data`).
+
+**Sample JSON Request Payload:**
+```json
+{
+  "data": [
+    {
+      "recipe_code": "RC001",
+      "sap_code": "SAP001",
+      "recipe_type": "Fabric",
+      "target_speed": 35
+    }
+  ]
+}
+```
+
+---
+
+### 18. GET /api/changeover-export/ (CSV)
+
+**Method:** `GET`  
+**URL:** `http://127.0.0.1:8000/api/changeover-export/?from_date=2026-04-01&to_date=2026-04-24&shift=A&format=csv`  
+**Status:** `N/A`  
+> **Note:** Exports filtered changeover report as CSV.
+
+---
+
+### 19. GET /api/changeover-export/ (Excel)
+
+**Method:** `GET`  
+**URL:** `http://127.0.0.1:8000/api/changeover-export/?from_date=2026-04-01&to_date=2026-04-24&shift=A`  
+**Status:** `N/A`  
+> **Note:** Exports filtered changeover report as Excel (`.xlsx`).
+
+---
+
+### 20. DELETE /api/standard-time/<id>/
+
+**Method:** `DELETE`  
+**URL:** `http://127.0.0.1:8000/api/standard-time/1/`  
+**Status:** `N/A`  
+> **Note:** Deletes one standard time mapping.
+
+---
+
+### 21. GET /api/overshoot-options/
+
+**Method:** `GET`  
+**URL:** `http://127.0.0.1:8000/api/overshoot-options/`  
+**Status:** `N/A`  
+> **Note:** Returns available overshoot categories and reasons used by dropdowns.
+
+---
+
+### 22. GET /api/reports/summary/
+
+**Method:** `GET`  
+**URL:** `http://127.0.0.1:8000/api/reports/summary/?start_date=2026-04-01&end_date=2026-04-24`  
+**Status:** `N/A`  
+> **Note:** Generates/downloads summary PDF report.
 
 ---
