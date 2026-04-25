@@ -22,14 +22,17 @@ class RawLineData(models.Model) :
 
 class MaterialMaster(models.Model):
     """
-    External BOM table containing recipes and SAP codes
+    Maps to the 'bom' table (external BOM/ERP data).
+    Filtered in the sync task to Equipment = '4RC'.
     """
-    recipe_code = models.CharField(max_length=100, primary_key=True, db_column='recipe_code')
-    sap_code = models.CharField(max_length=100, null=True, blank=True, db_column='sap_code')
+    table_id = models.IntegerField(primary_key=True, db_column='TableID')
+    recipe_code = models.TextField(db_column='FormulaCode', null=True, blank=True)
+    sap_code = models.TextField(db_column='PLCBOMName', null=True, blank=True)
+    equipment = models.TextField(db_column='Equipment', null=True, blank=True)
 
     class Meta:
         managed = False
-        db_table = 'MaterialMaster'
+        db_table = 'bom'
 
 
 class RecipeMaster(models.Model):

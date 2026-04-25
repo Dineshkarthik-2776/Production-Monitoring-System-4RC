@@ -779,8 +779,8 @@ def sync_recipe_master_from_bom():
     """
     print(f"Celery Task: sync_recipe_master_from_bom started at {timezone.now()}...")
     try:
-        # Fetch all recipes from the external MaterialMaster table
-        bom_recipes = MaterialMaster.objects.all()
+        # Fetch only 4RC recipes from the bom table
+        bom_recipes = MaterialMaster.objects.filter(equipment='4RC')
         
         created_count = 0
         updated_count = 0
