@@ -272,7 +272,7 @@ def process_changeover_data(dev_mode=False):
     }, inplace=True)
 
     # Make timezone-aware (UTC)
-    raw_df['DATE TIME'] = pd.to_datetime(raw_df['DATE TIME'], utc=True)
+    raw_df['DATE TIME'] = pd.to_datetime(raw_df['DATE TIME']).dt.tz_localize(None).dt.tz_localize('Asia/Kolkata').dt.tz_convert('UTC')
 
     print(f"Fetched {len(raw_df)} raw data records for processing.")
 
